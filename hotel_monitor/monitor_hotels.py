@@ -197,13 +197,30 @@ def check_trip_com() -> list[dict]:
         )
         print(f"  [Trip.com] アクセス中...")
         driver.get(url)
-        time.sleep(10)
+        time.sleep(8)
+
+        # スクロールして遅延ロードを発生させる
+        for scroll_y in [300, 600, 1000, 1500]:
+            driver.execute_script(f"window.scrollTo(0, {scroll_y})")
+            time.sleep(1)
+        driver.execute_script("window.scrollTo(0, 0)")
+        time.sleep(3)
 
         driver.save_screenshot(f"{SCREENSHOT_DIR}/trip_com.png")
         print(f"  [Trip.com] スクリーンショット保存完了")
 
-        cards = driver.find_elements(By.CSS_SELECTOR, ".compressmeta-hotel-wrap-v8")
-        print(f"  [Trip.com] {len(cards)} 件のカードを検出")
+        # A/Bテスト対応: 複数セレクターを試みる
+        card_selectors = [
+            ".compressmeta-hotel-wrap-v8",
+            ".hotel-card",
+            ".list-item-versionb",
+        ]
+        cards = []
+        for sel in card_selectors:
+            cards = driver.find_elements(By.CSS_SELECTOR, sel)
+            if cards:
+                print(f"  [Trip.com] '{sel}' で {len(cards)} 件のカードを検出")
+                break
 
         if not cards:
             print("  [Trip.com] ホテルカードが見つかりません")
@@ -232,11 +249,11 @@ def check_trip_com() -> list[dict]:
                 name_el = card.find_element(
                     By.CSS_SELECTOR,
                     '.list-card-tagAndTitle, .hotel-info, [class*="hotel-name"], '
-                    '[class*="hotelName"], a[href*="hotel-detail"]'
+                    '[class*="hotelName"], a[href*="hotel-detail"], [class*="title"]'
                 )
                 price_el = card.find_element(
                     By.CSS_SELECTOR,
-                    '.h5-usp-rate__item, [class*="rate__item"], '
+                    '.h5-usp-rate__item, .ol-usp-rate__item, [class*="rate__item"], '
                     '[class*="price"], [class*="Price"]'
                 )
 
