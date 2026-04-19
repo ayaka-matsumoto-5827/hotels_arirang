@@ -225,30 +225,28 @@ def check_trip_com() -> list[dict]:
         if not cards:
             print("  [Trip.com] ホテルカードが見つかりません")
 
-        # JavaScriptで価格要素から逆引きしてホテル名・価格・URLを一括取得
+        # カードのinnerTextから直接ホテル名・価格・URLを抽出
         hotel_data = driver.execute_script("""
             var results = [];
             var seen = new Set();
-            var priceEls = document.querySelectorAll(
-                '.h5-usp-rate__item__fr, .ol-usp-rate__item__fr, ' +
-                '.h5-usp-rate__item__bg, .ol-usp-rate__item__bg'
+            var cards = document.querySelectorAll(
+                '.hotel-card, .list-item-versionb, .compressmeta-hotel-wrap-v8'
             );
-            priceEls.forEach(function(priceEl) {
-                var container = priceEl.closest('.list-item') ||
-                                priceEl.closest('.compressmeta-hotel-wrap-v8') ||
-                                priceEl.closest('li');
-                if (!container) return;
-                var nameEl = container.querySelector(
-                    '.hotel-info, .list-card-tagAndTitle, [class*="hotel-name"]'
-                );
-                if (!nameEl) return;
-                var name = nameEl.innerText.trim().split('\\n')[0];
+            cards.forEach(function(card) {
+                var lines = (card.innerText || '').split('\\n').map(function(l) { return l.trim(); }).filter(Boolean);
+                if (lines.length === 0) return;
+                var name = lines[0];
                 if (seen.has(name)) return;
                 seen.add(name);
-                var linkEl = container.querySelector('a[href*="hotel"]');
+                // 「円」を含む最後の行から価格を取得
+                var priceText = '';
+                for (var i = lines.length - 1; i >= 0; i--) {
+                    if (lines[i].includes('円')) { priceText = lines[i]; break; }
+                }
+                var linkEl = card.querySelector('a[href*="hotel"], a[href*="hotels"]');
                 results.push({
                     name: name,
-                    price: priceEl.innerText.trim(),
+                    price: priceText,
                     url: linkEl ? linkEl.href : ''
                 });
             });
