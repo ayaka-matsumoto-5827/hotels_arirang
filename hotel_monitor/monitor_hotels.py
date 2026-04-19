@@ -4,26 +4,42 @@
 Booking.com と Trip.com を監視し、予算内のホテルが見つかったらDiscordに通知する
 """
 
-import asyncio
 import os
 import re
+import time
 from datetime import datetime, timezone
 
 import requests
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # --- 設定 ---
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 BUDGET_JPY = 20_000
 CHECKIN = "2026-06-12"
 CHECKOUT = "2026-06-13"
-HEADLESS = True
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0.0.0 Safari/537.36"
 )
+
+
+def make_driver() -> webdriver.Chrome:
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument(f"--user-agent={USER_AGENT}")
+    options.add_argument("--lang=ja-JP")
+    return webdriver.Chrome(options=options)
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +52,7 @@ def send_discord_notification(hotels: list[dict]) -> None:
         return
 
     embeds = []
-    for h in hotels[:10]:  # Discord は embed 最大10件
+    for h in hotels[:10]:
         embeds.append({
             "title": f"🏨 {h['name']}",
             "description": (
@@ -63,15 +79,7 @@ def send_discord_notification(hotels: list[dict]) -> None:
         print(f"[Discord] 送信失敗: HTTP {resp.status_code} / {resp.text}")
 
 
-# ---------------------------------------------------------------------------
-# 価格テキスト → 整数（円）変換ユーティリティ
-# ---------------------------------------------------------------------------
-
 def parse_price_jpy(text: str) -> int | None:
-    """
-    "¥15,800" / "15800円" / "15,800" などから数値を抽出して返す。
-    数値が取れない場合は None。
-    """
     digits = re.sub(r"[^\d]", "", text)
     return int(digits) if digits else None
 
@@ -80,15 +88,11 @@ def parse_price_jpy(text: str) -> int | None:
 # Booking.com
 # ---------------------------------------------------------------------------
 
-async def check_booking_com(pw) -> list[dict]:
+def check_booking_com() -> list[dict]:
     results = []
-    browser = await pw.chromium.launch(headless=HEADLESS)
-    ctx = await browser.new_context(locale="ja-JP", user_agent=USER_AGENT)
+    driver = make_driver()
 
     try:
-        page = await ctx.new_page()
-
-        # 価格フィルター付き釜山検索（円建て・安い順）
         url = (
             "https://www.booking.com/searchresults.ja.html"
             "?ss=%E9%87%9C%E5%B1%B1%2C+%E9%9F%93%E5%9B%BD"
@@ -97,32 +101,28 @@ async def check_booking_com(pw) -> list[dict]:
             "&order=price"
             f"&nflt=price%3DJPY-0-{BUDGET_JPY}-1"
         )
+        print(f"  [Booking.com] アクセス中...")
+        driver.get(url)
+        time.sleep(5)
 
-        print(f"  [Booking.com] {url}")
-        await page.goto(url, wait_until="networkidle", timeout=60_000)
-        await page.wait_for_timeout(3_000)
-
-        cards = await page.query_selector_all('[data-testid="property-card"]')
+        cards = driver.find_elements(By.CSS_SELECTOR, '[data-testid="property-card"]')
         print(f"  [Booking.com] {len(cards)} 件のカードを検出")
 
         for card in cards[:30]:
             try:
-                name_el = await card.query_selector('[data-testid="title"]')
-                price_el = await card.query_selector('[data-testid="price-and-discounted-price"]')
-                if not name_el or not price_el:
-                    continue
+                name_el = card.find_element(By.CSS_SELECTOR, '[data-testid="title"]')
+                price_el = card.find_element(By.CSS_SELECTOR, '[data-testid="price-and-discounted-price"]')
 
-                name = (await name_el.inner_text()).strip()
-                price_text = await price_el.inner_text()
-                price = parse_price_jpy(price_text)
+                name = name_el.text.strip()
+                price = parse_price_jpy(price_el.text)
                 if price is None:
                     continue
 
-                link_el = await card.query_selector('a[data-testid="title-link"]')
-                href = (await link_el.get_attribute("href")) if link_el else ""
-                hotel_url = (
-                    f"https://www.booking.com{href}" if href.startswith("/") else href
-                )
+                try:
+                    link_el = card.find_element(By.CSS_SELECTOR, 'a[data-testid="title-link"]')
+                    hotel_url = link_el.get_attribute("href")
+                except Exception:
+                    hotel_url = ""
 
                 if price <= BUDGET_JPY:
                     print(f"    ✓ {name}: ¥{price:,}")
@@ -136,13 +136,10 @@ async def check_booking_com(pw) -> list[dict]:
             except Exception as e:
                 print(f"    [Booking.com] カード解析エラー: {e}")
 
-    except PlaywrightTimeoutError:
-        print("  [Booking.com] タイムアウト")
     except Exception as e:
         print(f"  [Booking.com] エラー: {e}")
     finally:
-        await ctx.close()
-        await browser.close()
+        driver.quit()
 
     return results
 
@@ -151,41 +148,34 @@ async def check_booking_com(pw) -> list[dict]:
 # Trip.com
 # ---------------------------------------------------------------------------
 
-async def check_trip_com(pw) -> list[dict]:
+def check_trip_com() -> list[dict]:
     results = []
-    browser = await pw.chromium.launch(headless=HEADLESS)
-    ctx = await browser.new_context(locale="ja-JP", user_agent=USER_AGENT)
+    driver = make_driver()
 
     try:
-        page = await ctx.new_page()
-
-        # 釜山の Trip.com city ID = 10093
         url = (
             "https://jp.trip.com/hotels/list"
             "?city=10093"
             f"&checkin={CHECKIN}&checkout={CHECKOUT}"
             "&adult=2&children=0&rooms=1"
             "&curr=JPY&locale=ja-JP"
-            "&sortorder=0"  # 価格昇順
+            "&sortorder=0"
         )
+        print(f"  [Trip.com] アクセス中...")
+        driver.get(url)
+        time.sleep(8)
 
-        print(f"  [Trip.com] {url}")
-        await page.goto(url, wait_until="networkidle", timeout=60_000)
-        await page.wait_for_timeout(5_000)
-
-        # Trip.com はセレクターが変わりやすいため複数候補を試みる
         selectors = [
             ".hotel-list-item",
             '[class*="HotelListItem"]',
             '[class*="hotel-item"]',
             '[class*="hotelItem"]',
-            'li[class*="hotel"]',
         ]
         cards = []
         for sel in selectors:
-            cards = await page.query_selector_all(sel)
+            cards = driver.find_elements(By.CSS_SELECTOR, sel)
             if cards:
-                print(f"  [Trip.com] セレクター '{sel}' で {len(cards)} 件検出")
+                print(f"  [Trip.com] '{sel}' で {len(cards)} 件検出")
                 break
 
         if not cards:
@@ -193,28 +183,26 @@ async def check_trip_com(pw) -> list[dict]:
 
         for card in cards[:30]:
             try:
-                name_el = await card.query_selector(
+                name_el = card.find_element(
+                    By.CSS_SELECTOR,
                     '[class*="hotel-name"], [class*="hotelName"], [class*="HotelName"], h2, h3'
                 )
-                price_el = await card.query_selector(
+                price_el = card.find_element(
+                    By.CSS_SELECTOR,
                     '[class*="price-int"], [class*="priceInt"], [class*="Price"], [class*="price"]'
                 )
-                if not name_el or not price_el:
-                    continue
 
-                name = (await name_el.inner_text()).strip()
-                price_text = await price_el.inner_text()
-                price = parse_price_jpy(price_text)
+                name = name_el.text.strip()
+                price = parse_price_jpy(price_el.text)
                 if price is None:
                     continue
 
-                link_el = await card.query_selector("a")
-                href = (await link_el.get_attribute("href")) if link_el else ""
-                hotel_url = (
-                    f"https://jp.trip.com{href}"
-                    if href and not href.startswith("http")
-                    else href
-                )
+                try:
+                    link_el = card.find_element(By.TAG_NAME, "a")
+                    href = link_el.get_attribute("href")
+                    hotel_url = href if href else ""
+                except Exception:
+                    hotel_url = ""
 
                 if price <= BUDGET_JPY:
                     print(f"    ✓ {name}: ¥{price:,}")
@@ -228,13 +216,10 @@ async def check_trip_com(pw) -> list[dict]:
             except Exception as e:
                 print(f"    [Trip.com] カード解析エラー: {e}")
 
-    except PlaywrightTimeoutError:
-        print("  [Trip.com] タイムアウト")
     except Exception as e:
         print(f"  [Trip.com] エラー: {e}")
     finally:
-        await ctx.close()
-        await browser.close()
+        driver.quit()
 
     return results
 
@@ -243,18 +228,17 @@ async def check_trip_com(pw) -> list[dict]:
 # エントリーポイント
 # ---------------------------------------------------------------------------
 
-async def main() -> None:
+def main() -> None:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"=== ホテル空室監視開始 {now} ===")
     print(f"場所: 釜山　チェックイン: {CHECKIN}　チェックアウト: {CHECKOUT}")
     print(f"予算: ¥{BUDGET_JPY:,} 以下\n")
 
-    async with async_playwright() as pw:
-        print("【Booking.com 確認中...】")
-        booking = await check_booking_com(pw)
+    print("【Booking.com 確認中...】")
+    booking = check_booking_com()
 
-        print("\n【Trip.com 確認中...】")
-        trip = await check_trip_com(pw)
+    print("\n【Trip.com 確認中...】")
+    trip = check_trip_com()
 
     all_hotels = booking + trip
     print(f"\n=== 結果サマリー ===")
@@ -270,4 +254,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

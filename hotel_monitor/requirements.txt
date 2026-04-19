@@ -1,2 +1,2 @@
-playwright==1.44.0
+selenium==4.21.0
 requests==2.32.3
