@@ -202,33 +202,16 @@ def check_trip_com() -> list[dict]:
         driver.save_screenshot(f"{SCREENSHOT_DIR}/trip_com.png")
         print(f"  [Trip.com] スクリーンショット保存完了")
 
-        selectors = [
-            ".hotel-list-item",
-            '[class*="HotelListItem"]',
-            '[class*="hotel-item"]',
-            '[class*="hotelItem"]',
-            '[class*="HotelCard"]',
-            '[class*="hotel-card"]',
-            '[class*="listItem"]',
-            '[class*="list-item"]',
-            '[class*="propertyCard"]',
-            "li[data-hotelid]",
-            "li[data-hotel-id]",
-        ]
-        cards = []
-        for sel in selectors:
-            cards = driver.find_elements(By.CSS_SELECTOR, sel)
-            if cards:
-                print(f"  [Trip.com] '{sel}' で {len(cards)} 件検出")
-                break
+        cards = driver.find_elements(By.CSS_SELECTOR, ".hotel-card")
+        print(f"  [Trip.com] {len(cards)} 件のカードを検出")
 
         if not cards:
-            # デバッグ: li要素のクラス名を出力
-            lis = driver.find_elements(By.TAG_NAME, "li")
-            print(f"  [Trip.com] li要素数: {len(lis)}")
-            for li in lis[:5]:
-                print(f"    li class: {li.get_attribute('class')[:80]}")
-            print("  [Trip.com] ホテルカードが見つかりません（セレクター要確認）")
+            print("  [Trip.com] ホテルカードが見つかりません")
+
+        # デバッグ: 最初のカードのHTML構造を出力
+        if cards:
+            first_html = driver.execute_script("return arguments[0].innerHTML;", cards[0])
+            print(f"  [Trip.com] カードHTML(先頭600文字): {first_html[:600]}")
 
         # デバッグ: ページ内の"hotel"/"item"を含むクラス名を出力
         class_names = driver.execute_script("""
