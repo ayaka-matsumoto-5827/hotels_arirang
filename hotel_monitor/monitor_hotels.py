@@ -230,15 +230,23 @@ def check_trip_com() -> list[dict]:
                 print(f"    li class: {li.get_attribute('class')[:80]}")
             print("  [Trip.com] ホテルカードが見つかりません（セレクター要確認）")
 
+        # デバッグ: 最初のカードのHTML構造を出力
+        if cards:
+            first_html = driver.execute_script("return arguments[0].innerHTML;", cards[0])
+            print(f"  [Trip.com] カードHTML(先頭800文字): {first_html[:800]}")
+
         for card in cards[:30]:
             try:
                 name_el = card.find_element(
                     By.CSS_SELECTOR,
-                    '[class*="hotel-name"], [class*="hotelName"], [class*="HotelName"], h2, h3'
+                    'a[class*="name"], span[class*="name"], div[class*="name"], '
+                    '[class*="hotel-name"], [class*="hotelName"], [class*="HotelName"], '
+                    '[class*="title"], a[href*="hotel"]'
                 )
                 price_el = card.find_element(
                     By.CSS_SELECTOR,
-                    '[class*="price-int"], [class*="priceInt"], [class*="Price"], [class*="price"]'
+                    '[class*="price-int"], [class*="priceInt"], [class*="Price"], '
+                    '[class*="price"], [class*="amount"], span[class*="num"]'
                 )
 
                 name = name_el.text.strip()
