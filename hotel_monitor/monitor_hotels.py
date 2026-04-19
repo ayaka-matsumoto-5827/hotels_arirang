@@ -202,29 +202,11 @@ def check_trip_com() -> list[dict]:
         driver.save_screenshot(f"{SCREENSHOT_DIR}/trip_com.png")
         print(f"  [Trip.com] スクリーンショット保存完了")
 
-        cards = driver.find_elements(By.CSS_SELECTOR, ".hotel-card")
+        cards = driver.find_elements(By.CSS_SELECTOR, ".compressmeta-hotel-wrap-v8")
         print(f"  [Trip.com] {len(cards)} 件のカードを検出")
 
         if not cards:
             print("  [Trip.com] ホテルカードが見つかりません")
-
-        # デバッグ: JavaScriptでカード内の可視テキストを抽出
-        if cards:
-            result = driver.execute_script("""
-                var card = arguments[0];
-                var spans = card.querySelectorAll('span, a, div, p');
-                var texts = [];
-                spans.forEach(function(el) {
-                    var t = el.innerText ? el.innerText.trim() : '';
-                    if (t && t.length > 0 && t.length < 200 && el.children.length === 0) {
-                        texts.push(el.className.substring(0,40) + ' => ' + t.substring(0,60));
-                    }
-                });
-                return texts.slice(0, 30);
-            """, cards[0])
-            print(f"  [Trip.com] カード内テキスト要素:")
-            for r in result:
-                print(f"    {r}")
 
         # デバッグ: ページ内の"hotel"/"item"を含むクラス名を出力
         class_names = driver.execute_script("""
@@ -249,14 +231,13 @@ def check_trip_com() -> list[dict]:
             try:
                 name_el = card.find_element(
                     By.CSS_SELECTOR,
-                    'a[class*="name"], span[class*="name"], div[class*="name"], '
-                    '[class*="hotel-name"], [class*="hotelName"], [class*="HotelName"], '
-                    '[class*="title"], a[href*="hotel"]'
+                    '.list-card-tagAndTitle, .hotel-info, [class*="hotel-name"], '
+                    '[class*="hotelName"], a[href*="hotel-detail"]'
                 )
                 price_el = card.find_element(
                     By.CSS_SELECTOR,
-                    '[class*="price-int"], [class*="priceInt"], [class*="Price"], '
-                    '[class*="price"], [class*="amount"], span[class*="num"]'
+                    '.h5-usp-rate__item, [class*="rate__item"], '
+                    '[class*="price"], [class*="Price"]'
                 )
 
                 name = name_el.text.strip()
