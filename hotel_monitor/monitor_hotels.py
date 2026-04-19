@@ -208,10 +208,10 @@ def check_trip_com() -> list[dict]:
         if not cards:
             print("  [Trip.com] ホテルカードが見つかりません")
 
-        # デバッグ: 最初のカードのHTML構造を出力
+        # デバッグ: 最初のカードのHTML構造を出力（1500文字）
         if cards:
-            first_html = driver.execute_script("return arguments[0].innerHTML;", cards[0])
-            print(f"  [Trip.com] カードHTML(先頭600文字): {first_html[:600]}")
+            first_html = driver.execute_script("return arguments[0].outerHTML;", cards[0])
+            print(f"  [Trip.com] カードHTML(1500文字): {first_html[400:1900]}")
 
         # デバッグ: ページ内の"hotel"/"item"を含むクラス名を出力
         class_names = driver.execute_script("""
