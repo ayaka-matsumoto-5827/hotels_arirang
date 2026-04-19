@@ -246,7 +246,7 @@ def check_trip_com() -> list[dict]:
             params["checkout"] = [CHECKOUT]
             params["curr"] = ["JPY"]
             params["locale"] = ["ja-JP"]
-            params["sortorder"] = ["0"]
+            params["sortorder"] = ["2"]  # 2 = 価格昇順
             params["adult"] = ["2"]
             params["rooms"] = ["1"]
             fixed_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?" + \
