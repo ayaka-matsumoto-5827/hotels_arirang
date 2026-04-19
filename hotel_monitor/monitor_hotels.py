@@ -119,6 +119,23 @@ def check_booking_com() -> list[dict]:
         driver.get(url)
         time.sleep(8)
 
+        # ポップアップを閉じる
+        try:
+            from selenium.webdriver.common.keys import Keys
+            driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+            time.sleep(1)
+        except Exception:
+            pass
+        try:
+            close_btn = driver.find_element(
+                By.CSS_SELECTOR,
+                'button[aria-label="閉じる"], button[aria-label="Close"], [data-testid="modal-mask"] button'
+            )
+            close_btn.click()
+            time.sleep(1)
+        except Exception:
+            pass
+
         driver.save_screenshot(f"{SCREENSHOT_DIR}/booking_com.png")
         print(f"  [Booking.com] スクリーンショット保存完了")
 
@@ -170,10 +187,10 @@ def check_trip_com() -> list[dict]:
     driver = make_driver()
 
     try:
-        # 釜山(Busan)のTrip.com city ID = 7
+        # キーワード検索でBusanを指定（city IDより確実）
         url = (
             "https://jp.trip.com/hotels/list"
-            "?city=7"
+            "?keyword=Busan"
             f"&checkin={CHECKIN}&checkout={CHECKOUT}"
             "&adult=2&children=0&rooms=1"
             "&curr=JPY&locale=ja-JP"
