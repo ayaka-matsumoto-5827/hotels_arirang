@@ -7,7 +7,7 @@ on:
 
 jobs:
   monitor:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
 
     steps:
@@ -24,16 +24,10 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r hotel_monitor/requirements.txt
 
-      - name: Install Playwright browser dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
-            libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
-            libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64
-
       - name: Install Playwright browser
-        run: playwright install chromium
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
 
       - name: Run hotel monitor
         env:
