@@ -234,11 +234,29 @@ def check_trip_com() -> list[dict]:
                 'button[class*="Search"], [data-testid*="search"]'
             )
             search_btn.click()
+            time.sleep(8)
+
+            # 遷移後URLから目的地パラメータを抽出し、正しい日付で再アクセス
+            import urllib.parse
+            current_url = driver.current_url
+            print(f"  [Trip.com] 遷移後URL: {current_url}")
+            parsed = urllib.parse.urlparse(current_url)
+            params = urllib.parse.parse_qs(parsed.query)
+            params["checkin"] = [CHECKIN]
+            params["checkout"] = [CHECKOUT]
+            params["curr"] = ["JPY"]
+            params["locale"] = ["ja-JP"]
+            params["sortorder"] = ["0"]
+            params["adult"] = ["2"]
+            params["rooms"] = ["1"]
+            fixed_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?" + \
+                urllib.parse.urlencode({k: v[0] for k, v in params.items()})
+            print(f"  [Trip.com] 日付修正URL: {fixed_url}")
+            driver.get(fixed_url)
             time.sleep(10)
 
         except Exception as e:
             print(f"  [Trip.com] フォーム操作エラー: {e}")
-            # フォールバック: 直接URLで試みる
             driver.get(
                 "https://jp.trip.com/hotels/list"
                 f"?checkin={CHECKIN}&checkout={CHECKOUT}"
