@@ -248,16 +248,23 @@ def check_trip_com() -> list[dict]:
             try:
                 name_el = card.find_element(
                     By.CSS_SELECTOR,
-                    '.list-card-tagAndTitle, .hotel-info, [class*="hotel-name"], '
-                    '[class*="hotelName"], a[href*="hotel-detail"], [class*="title"]'
+                    '.hotel-info, .list-card-tagAndTitle, [class*="hotel-name"]'
                 )
-                price_el = card.find_element(
-                    By.CSS_SELECTOR,
-                    '.h5-usp-rate__item, .ol-usp-rate__item, [class*="rate__item"], '
-                    '[class*="price"], [class*="Price"]'
-                )
+                # 割引後の価格（__fr）を優先、なければ通常価格（__bg）
+                try:
+                    price_el = card.find_element(
+                        By.CSS_SELECTOR,
+                        '.h5-usp-rate__item__fr, .ol-usp-rate__item__fr'
+                    )
+                except Exception:
+                    price_el = card.find_element(
+                        By.CSS_SELECTOR,
+                        '.h5-usp-rate__item__bg, .ol-usp-rate__item__bg, '
+                        '.h5-usp-rate__item, .ol-usp-rate__item'
+                    )
 
-                name = name_el.text.strip()
+                # ホテル名は最初の行のみ取得
+                name = name_el.text.strip().split('\n')[0]
                 price = parse_price_jpy(price_el.text)
                 if price is None:
                     continue
