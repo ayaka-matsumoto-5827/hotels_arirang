@@ -208,10 +208,23 @@ def check_trip_com() -> list[dict]:
         if not cards:
             print("  [Trip.com] ホテルカードが見つかりません")
 
-        # デバッグ: 最初のカードのHTML構造を出力（1500文字）
+        # デバッグ: JavaScriptでカード内の可視テキストを抽出
         if cards:
-            first_html = driver.execute_script("return arguments[0].outerHTML;", cards[0])
-            print(f"  [Trip.com] カードHTML(1500文字): {first_html[400:1900]}")
+            result = driver.execute_script("""
+                var card = arguments[0];
+                var spans = card.querySelectorAll('span, a, div, p');
+                var texts = [];
+                spans.forEach(function(el) {
+                    var t = el.innerText ? el.innerText.trim() : '';
+                    if (t && t.length > 0 && t.length < 200 && el.children.length === 0) {
+                        texts.push(el.className.substring(0,40) + ' => ' + t.substring(0,60));
+                    }
+                });
+                return texts.slice(0, 30);
+            """, cards[0])
+            print(f"  [Trip.com] カード内テキスト要素:")
+            for r in result:
+                print(f"    {r}")
 
         # デバッグ: ページ内の"hotel"/"item"を含むクラス名を出力
         class_names = driver.execute_script("""
