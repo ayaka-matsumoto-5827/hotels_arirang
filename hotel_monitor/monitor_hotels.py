@@ -187,82 +187,17 @@ def check_trip_com() -> list[dict]:
     driver = make_driver()
 
     try:
-        # Trip.com 釜山ホテル検索（フォーム操作 → 検索ボタンで結果ページへ）
+        # 釜山のcity ID = 253 を直接指定
+        url = (
+            "https://jp.trip.com/hotels/list"
+            "?city=253&cityName=Busan&countryId=42"
+            f"&checkin={CHECKIN}&checkout={CHECKOUT}"
+            "&adult=2&children=0&rooms=1"
+            "&curr=JPY&locale=ja-JP&sortorder=1"
+        )
         print(f"  [Trip.com] アクセス中...")
-        driver.get("https://jp.trip.com/hotels/")
-        time.sleep(5)
-
-        try:
-            from selenium.webdriver.common.keys import Keys
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-
-            # 目的地入力欄をクリアして「Busan」を入力
-            dest = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR,
-                    'input[data-testid*="dest"], input[placeholder*="目的"], '
-                    'input[placeholder*="都市"], input[placeholder*="Where"], '
-                    'input[class*="dest"]'
-                ))
-            )
-            dest.click()
-            dest.send_keys(Keys.CONTROL + "a")
-            dest.send_keys("Busan")
-            time.sleep(3)
-
-            # ドロップダウンからBusan/釜山/Koreaの候補を選択
-            suggestions = driver.find_elements(By.CSS_SELECTOR,
-                '[class*="suggestItem"], [class*="suggest-item"], '
-                '[class*="SuggestItem"], li[class*="item"], [class*="option"]'
-            )
-            clicked = False
-            for s in suggestions:
-                text = s.text
-                if any(kw in text for kw in ["Busan", "釜山", "Korea", "韓国", "부산"]):
-                    s.click()
-                    clicked = True
-                    print(f"  [Trip.com] 候補を選択: {text[:50]}")
-                    break
-            if not clicked and suggestions:
-                suggestions[0].click()
-                print(f"  [Trip.com] 先頭候補を選択: {suggestions[0].text[:50]}")
-            time.sleep(2)
-
-            # 検索ボタンをクリックして結果ページへ
-            search_btn = driver.find_element(By.CSS_SELECTOR,
-                'button[type="submit"], [class*="searchBtn"], [class*="search-btn"], '
-                'button[class*="Search"], [data-testid*="search"]'
-            )
-            search_btn.click()
-            time.sleep(8)
-
-            # 遷移後URLから目的地パラメータを抽出し、正しい日付で再アクセス
-            import urllib.parse
-            current_url = driver.current_url
-            print(f"  [Trip.com] 遷移後URL: {current_url}")
-            parsed = urllib.parse.urlparse(current_url)
-            params = urllib.parse.parse_qs(parsed.query)
-            params["checkin"] = [CHECKIN]
-            params["checkout"] = [CHECKOUT]
-            params["curr"] = ["JPY"]
-            params["locale"] = ["ja-JP"]
-            params["sortorder"] = ["2"]  # 2 = 価格昇順
-            params["adult"] = ["2"]
-            params["rooms"] = ["1"]
-            fixed_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?" + \
-                urllib.parse.urlencode({k: v[0] for k, v in params.items()})
-            print(f"  [Trip.com] 日付修正URL: {fixed_url}")
-            driver.get(fixed_url)
-            time.sleep(10)
-
-        except Exception as e:
-            print(f"  [Trip.com] フォーム操作エラー: {e}")
-            driver.get(
-                "https://jp.trip.com/hotels/list"
-                f"?checkin={CHECKIN}&checkout={CHECKOUT}"
-                "&adult=2&children=0&rooms=1&curr=JPY&locale=ja-JP&sortorder=0"
-            )
-            time.sleep(8)
+        driver.get(url)
+        time.sleep(10)
 
         driver.save_screenshot(f"{SCREENSHOT_DIR}/trip_com.png")
         print(f"  [Trip.com] スクリーンショット保存完了")
@@ -272,6 +207,13 @@ def check_trip_com() -> list[dict]:
             '[class*="HotelListItem"]',
             '[class*="hotel-item"]',
             '[class*="hotelItem"]',
+            '[class*="HotelCard"]',
+            '[class*="hotel-card"]',
+            '[class*="listItem"]',
+            '[class*="list-item"]',
+            '[class*="propertyCard"]',
+            "li[data-hotelid]",
+            "li[data-hotel-id]",
         ]
         cards = []
         for sel in selectors:
@@ -281,6 +223,11 @@ def check_trip_com() -> list[dict]:
                 break
 
         if not cards:
+            # デバッグ: li要素のクラス名を出力
+            lis = driver.find_elements(By.TAG_NAME, "li")
+            print(f"  [Trip.com] li要素数: {len(lis)}")
+            for li in lis[:5]:
+                print(f"    li class: {li.get_attribute('class')[:80]}")
             print("  [Trip.com] ホテルカードが見つかりません（セレクター要確認）")
 
         for card in cards[:30]:
