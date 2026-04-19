@@ -187,18 +187,64 @@ def check_trip_com() -> list[dict]:
     driver = make_driver()
 
     try:
-        # キーワード検索でBusanを指定（city IDより確実）
-        url = (
-            "https://jp.trip.com/hotels/list"
-            "?keyword=Busan"
-            f"&checkin={CHECKIN}&checkout={CHECKOUT}"
-            "&adult=2&children=0&rooms=1"
-            "&curr=JPY&locale=ja-JP"
-            "&sortorder=0"
-        )
+        # Trip.com 釜山ホテル検索（フォーム操作 → 検索ボタンで結果ページへ）
         print(f"  [Trip.com] アクセス中...")
-        driver.get(url)
-        time.sleep(10)
+        driver.get("https://jp.trip.com/hotels/")
+        time.sleep(5)
+
+        try:
+            from selenium.webdriver.common.keys import Keys
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            # 目的地入力欄をクリアして「Busan」を入力
+            dest = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR,
+                    'input[data-testid*="dest"], input[placeholder*="目的"], '
+                    'input[placeholder*="都市"], input[placeholder*="Where"], '
+                    'input[class*="dest"]'
+                ))
+            )
+            dest.click()
+            dest.send_keys(Keys.CONTROL + "a")
+            dest.send_keys("Busan")
+            time.sleep(3)
+
+            # ドロップダウンからBusan/釜山/Koreaの候補を選択
+            suggestions = driver.find_elements(By.CSS_SELECTOR,
+                '[class*="suggestItem"], [class*="suggest-item"], '
+                '[class*="SuggestItem"], li[class*="item"], [class*="option"]'
+            )
+            clicked = False
+            for s in suggestions:
+                text = s.text
+                if any(kw in text for kw in ["Busan", "釜山", "Korea", "韓国", "부산"]):
+                    s.click()
+                    clicked = True
+                    print(f"  [Trip.com] 候補を選択: {text[:50]}")
+                    break
+            if not clicked and suggestions:
+                suggestions[0].click()
+                print(f"  [Trip.com] 先頭候補を選択: {suggestions[0].text[:50]}")
+            time.sleep(2)
+
+            # 検索ボタンをクリックして結果ページへ
+            search_btn = driver.find_element(By.CSS_SELECTOR,
+                'button[type="submit"], [class*="searchBtn"], [class*="search-btn"], '
+                'button[class*="Search"], [data-testid*="search"]'
+            )
+            search_btn.click()
+            time.sleep(10)
+
+        except Exception as e:
+            print(f"  [Trip.com] フォーム操作エラー: {e}")
+            # フォールバック: 直接URLで試みる
+            driver.get(
+                "https://jp.trip.com/hotels/list"
+                f"?checkin={CHECKIN}&checkout={CHECKOUT}"
+                "&adult=2&children=0&rooms=1&curr=JPY&locale=ja-JP&sortorder=0"
+            )
+            time.sleep(8)
 
         driver.save_screenshot(f"{SCREENSHOT_DIR}/trip_com.png")
         print(f"  [Trip.com] スクリーンショット保存完了")
