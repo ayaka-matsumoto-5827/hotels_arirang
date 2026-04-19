@@ -230,10 +230,24 @@ def check_trip_com() -> list[dict]:
                 print(f"    li class: {li.get_attribute('class')[:80]}")
             print("  [Trip.com] ホテルカードが見つかりません（セレクター要確認）")
 
-        # デバッグ: 最初のカードのHTML構造を出力
-        if cards:
-            first_html = driver.execute_script("return arguments[0].innerHTML;", cards[0])
-            print(f"  [Trip.com] カードHTML(先頭800文字): {first_html[:800]}")
+        # デバッグ: ページ内の"hotel"/"item"を含むクラス名を出力
+        class_names = driver.execute_script("""
+            var els = document.querySelectorAll('*');
+            var classes = new Set();
+            els.forEach(function(el) {
+                if (el.className && typeof el.className === 'string') {
+                    el.className.split(' ').forEach(function(c) {
+                        if ((c.includes('hotel') || c.includes('Hotel') ||
+                             c.includes('item') || c.includes('Item') ||
+                             c.includes('card') || c.includes('Card')) && c.length < 50) {
+                            classes.add(c);
+                        }
+                    });
+                }
+            });
+            return Array.from(classes).slice(0, 40);
+        """)
+        print(f"  [Trip.com] 発見クラス名: {class_names}")
 
         for card in cards[:30]:
             try:
