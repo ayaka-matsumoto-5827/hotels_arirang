@@ -12,22 +12,23 @@ from datetime import datetime, timezone
 import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from selenium_stealth import stealth
 
 # --- 設定 ---
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 BUDGET_JPY = 20_000
 CHECKIN = "2026-06-12"
 CHECKOUT = "2026-06-13"
+SCREENSHOT_DIR = "screenshots"
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0.0.0 Safari/537.36"
 )
+
+os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 
 def make_driver() -> webdriver.Chrome:
@@ -37,9 +38,21 @@ def make_driver() -> webdriver.Chrome:
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-    options.add_argument(f"--user-agent={USER_AGENT}")
-    options.add_argument("--lang=ja-JP")
-    return webdriver.Chrome(options=options)
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
+
+    driver = webdriver.Chrome(options=options)
+    stealth(
+        driver,
+        languages=["ja-JP", "ja"],
+        vendor="Google Inc.",
+        platform="Win32",
+        webgl_vendor="Intel Inc.",
+        renderer="Intel Iris OpenGL Engine",
+        fix_hairline=True,
+    )
+    return driver
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +116,10 @@ def check_booking_com() -> list[dict]:
         )
         print(f"  [Booking.com] アクセス中...")
         driver.get(url)
-        time.sleep(5)
+        time.sleep(8)
+
+        driver.save_screenshot(f"{SCREENSHOT_DIR}/booking_com.png")
+        print(f"  [Booking.com] スクリーンショット保存完了")
 
         cards = driver.find_elements(By.CSS_SELECTOR, '[data-testid="property-card"]')
         print(f"  [Booking.com] {len(cards)} 件のカードを検出")
@@ -163,7 +179,10 @@ def check_trip_com() -> list[dict]:
         )
         print(f"  [Trip.com] アクセス中...")
         driver.get(url)
-        time.sleep(8)
+        time.sleep(10)
+
+        driver.save_screenshot(f"{SCREENSHOT_DIR}/trip_com.png")
+        print(f"  [Trip.com] スクリーンショット保存完了")
 
         selectors = [
             ".hotel-list-item",
@@ -199,8 +218,7 @@ def check_trip_com() -> list[dict]:
 
                 try:
                     link_el = card.find_element(By.TAG_NAME, "a")
-                    href = link_el.get_attribute("href")
-                    hotel_url = href if href else ""
+                    hotel_url = link_el.get_attribute("href") or ""
                 except Exception:
                     hotel_url = ""
 
