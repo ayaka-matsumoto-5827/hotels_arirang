@@ -106,13 +106,14 @@ def check_booking_com() -> list[dict]:
     driver = make_driver()
 
     try:
+        # 価格フィルターはURLに含めず、コード側でフィルタリング
         url = (
             "https://www.booking.com/searchresults.ja.html"
-            "?ss=%E9%87%9C%E5%B1%B1%2C+%E9%9F%93%E5%9B%BD"
+            "?ss=Busan%2C+South+Korea"
             f"&checkin={CHECKIN}&checkout={CHECKOUT}"
             "&group_adults=2&no_rooms=1"
             "&order=price"
-            f"&nflt=price%3DJPY-0-{BUDGET_JPY}-1"
+            "&selected_currency=JPY"
         )
         print(f"  [Booking.com] アクセス中...")
         driver.get(url)
@@ -169,9 +170,10 @@ def check_trip_com() -> list[dict]:
     driver = make_driver()
 
     try:
+        # 釜山(Busan)のTrip.com city ID = 7
         url = (
             "https://jp.trip.com/hotels/list"
-            "?city=10093"
+            "?city=7"
             f"&checkin={CHECKIN}&checkout={CHECKOUT}"
             "&adult=2&children=0&rooms=1"
             "&curr=JPY&locale=ja-JP"
