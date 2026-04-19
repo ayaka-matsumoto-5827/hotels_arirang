@@ -225,67 +225,51 @@ def check_trip_com() -> list[dict]:
         if not cards:
             print("  [Trip.com] ホテルカードが見つかりません")
 
-        # デバッグ: ページ内の"hotel"/"item"を含むクラス名を出力
-        class_names = driver.execute_script("""
-            var els = document.querySelectorAll('*');
-            var classes = new Set();
-            els.forEach(function(el) {
-                if (el.className && typeof el.className === 'string') {
-                    el.className.split(' ').forEach(function(c) {
-                        if ((c.includes('hotel') || c.includes('Hotel') ||
-                             c.includes('item') || c.includes('Item') ||
-                             c.includes('card') || c.includes('Card')) && c.length < 50) {
-                            classes.add(c);
-                        }
-                    });
-                }
-            });
-            return Array.from(classes).slice(0, 40);
-        """)
-        print(f"  [Trip.com] 発見クラス名: {class_names}")
-
-        for card in cards[:30]:
-            try:
-                name_el = card.find_element(
-                    By.CSS_SELECTOR,
+        # JavaScriptで価格要素から逆引きしてホテル名・価格・URLを一括取得
+        hotel_data = driver.execute_script("""
+            var results = [];
+            var seen = new Set();
+            var priceEls = document.querySelectorAll(
+                '.h5-usp-rate__item__fr, .ol-usp-rate__item__fr, ' +
+                '.h5-usp-rate__item__bg, .ol-usp-rate__item__bg'
+            );
+            priceEls.forEach(function(priceEl) {
+                var container = priceEl.closest('.list-item') ||
+                                priceEl.closest('.compressmeta-hotel-wrap-v8') ||
+                                priceEl.closest('li');
+                if (!container) return;
+                var nameEl = container.querySelector(
                     '.hotel-info, .list-card-tagAndTitle, [class*="hotel-name"]'
-                )
-                # 割引後の価格（__fr）を優先、なければ通常価格（__bg）
-                try:
-                    price_el = card.find_element(
-                        By.CSS_SELECTOR,
-                        '.h5-usp-rate__item__fr, .ol-usp-rate__item__fr'
-                    )
-                except Exception:
-                    price_el = card.find_element(
-                        By.CSS_SELECTOR,
-                        '.h5-usp-rate__item__bg, .ol-usp-rate__item__bg, '
-                        '.h5-usp-rate__item, .ol-usp-rate__item'
-                    )
+                );
+                if (!nameEl) return;
+                var name = nameEl.innerText.trim().split('\\n')[0];
+                if (seen.has(name)) return;
+                seen.add(name);
+                var linkEl = container.querySelector('a[href*="hotel"]');
+                results.push({
+                    name: name,
+                    price: priceEl.innerText.trim(),
+                    url: linkEl ? linkEl.href : ''
+                });
+            });
+            return results.slice(0, 30);
+        """)
+        print(f"  [Trip.com] JS抽出: {len(hotel_data)} 件")
 
-                # ホテル名は最初の行のみ取得
-                name = name_el.text.strip().split('\n')[0]
-                price = parse_price_jpy(price_el.text)
-                if price is None:
-                    continue
-
-                try:
-                    link_el = card.find_element(By.TAG_NAME, "a")
-                    hotel_url = link_el.get_attribute("href") or ""
-                except Exception:
-                    hotel_url = ""
-
-                if price <= BUDGET_JPY:
-                    print(f"    ✓ {name}: ¥{price:,}")
-                    results.append({
-                        "site": "Trip.com",
-                        "name": name,
-                        "price": f"¥{price:,}",
-                        "price_num": price,
-                        "url": hotel_url,
-                    })
-            except Exception as e:
-                print(f"    [Trip.com] カード解析エラー: {e}")
+        for h in hotel_data:
+            price = parse_price_jpy(h.get("price", ""))
+            name = h.get("name", "").strip()
+            if price is None or not name:
+                continue
+            if price <= BUDGET_JPY:
+                print(f"    ✓ {name}: ¥{price:,}")
+                results.append({
+                    "site": "Trip.com",
+                    "name": name,
+                    "price": f"¥{price:,}",
+                    "price_num": price,
+                    "url": h.get("url", ""),
+                })
 
     except Exception as e:
         print(f"  [Trip.com] エラー: {e}")
