@@ -211,9 +211,9 @@ def check_trip_com() -> list[dict]:
 
         # A/Bテスト対応: 複数セレクターを試みる
         card_selectors = [
+            ".list-item-versionb",
             ".compressmeta-hotel-wrap-v8",
             ".hotel-card",
-            ".list-item-versionb",
         ]
         cards = []
         for sel in card_selectors:
