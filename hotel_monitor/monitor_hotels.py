@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 釜山ホテル空室監視スクリプト
-Booking.com と Trip.com を監視し、予算内のホテルが見つかったらDiscordに通知する
+Booking.com / Trip.com / 東横INN を監視し、予算内のホテルが見つかったらDiscordに通知する
 """
 
 import os
@@ -18,8 +18,11 @@ from selenium_stealth import stealth
 # --- 設定 ---
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 BUDGET_JPY = 30_000
-CHECKIN = "2026-06-12"
-CHECKOUT = "2026-06-13"
+DATE_RANGES = [
+    ("2026-06-11", "2026-06-12"),
+    ("2026-06-12", "2026-06-13"),
+    ("2026-06-13", "2026-06-14"),
+]
 SCREENSHOT_DIR = "screenshots"
 
 USER_AGENT = (
@@ -70,6 +73,7 @@ def send_discord_notification(hotels: list[dict]) -> None:
             "title": f"🏨 {h['name']}",
             "description": (
                 f"**サイト**: {h['site']}\n"
+                f"**日程**: {h['checkin']} チェックイン\n"
                 f"**金額**: {h['price']}\n"
                 f"**URL**: {h.get('url', 'N/A')}"
             ),
@@ -79,7 +83,7 @@ def send_discord_notification(hotels: list[dict]) -> None:
 
     payload = {
         "content": (
-            f"💡 **釜山ホテル空室情報** ({CHECKIN} チェックイン)\n"
+            f"💡 **釜山ホテル空室情報**\n"
             f"予算 ¥{BUDGET_JPY:,} 以下のホテルが **{len(hotels)}** 件見つかりました！"
         ),
         "embeds": embeds,
@@ -101,16 +105,15 @@ def parse_price_jpy(text: str) -> int | None:
 # Booking.com
 # ---------------------------------------------------------------------------
 
-def check_booking_com() -> list[dict]:
+def check_booking_com(checkin: str, checkout: str) -> list[dict]:
     results = []
     driver = make_driver()
 
     try:
-        # 価格フィルターはURLに含めず、コード側でフィルタリング
         url = (
             "https://www.booking.com/searchresults.ja.html"
             "?ss=Busan%2C+South+Korea"
-            f"&checkin={CHECKIN}&checkout={CHECKOUT}"
+            f"&checkin={checkin}&checkout={checkout}"
             "&group_adults=2&no_rooms=1"
             "&order=price"
             "&selected_currency=JPY"
@@ -119,7 +122,6 @@ def check_booking_com() -> list[dict]:
         driver.get(url)
         time.sleep(8)
 
-        # ポップアップを閉じる
         try:
             from selenium.webdriver.common.keys import Keys
             driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
@@ -136,8 +138,7 @@ def check_booking_com() -> list[dict]:
         except Exception:
             pass
 
-        driver.save_screenshot(f"{SCREENSHOT_DIR}/booking_com.png")
-        print(f"  [Booking.com] スクリーンショット保存完了")
+        driver.save_screenshot(f"{SCREENSHOT_DIR}/booking_com_{checkin}.png")
 
         cards = driver.find_elements(By.CSS_SELECTOR, '[data-testid="property-card"]')
         print(f"  [Booking.com] {len(cards)} 件のカードを検出")
@@ -163,6 +164,7 @@ def check_booking_com() -> list[dict]:
                     results.append({
                         "site": "Booking.com",
                         "name": name,
+                        "checkin": checkin,
                         "price": f"¥{price:,}",
                         "price_num": price,
                         "url": hotel_url,
@@ -182,16 +184,15 @@ def check_booking_com() -> list[dict]:
 # Trip.com
 # ---------------------------------------------------------------------------
 
-def check_trip_com() -> list[dict]:
+def check_trip_com(checkin: str, checkout: str) -> list[dict]:
     results = []
     driver = make_driver()
 
     try:
-        # 釜山のcity ID = 253 を直接指定
         url = (
             "https://jp.trip.com/hotels/list"
             "?city=253&cityName=Busan&countryId=42"
-            f"&checkin={CHECKIN}&checkout={CHECKOUT}"
+            f"&checkin={checkin}&checkout={checkout}"
             "&adult=2&children=0&rooms=1"
             "&curr=JPY&locale=ja-JP&sortorder=1"
         )
@@ -199,17 +200,14 @@ def check_trip_com() -> list[dict]:
         driver.get(url)
         time.sleep(8)
 
-        # スクロールして遅延ロードを発生させる
         for scroll_y in [300, 600, 1000, 1500]:
             driver.execute_script(f"window.scrollTo(0, {scroll_y})")
             time.sleep(1)
         driver.execute_script("window.scrollTo(0, 0)")
         time.sleep(3)
 
-        driver.save_screenshot(f"{SCREENSHOT_DIR}/trip_com.png")
-        print(f"  [Trip.com] スクリーンショット保存完了")
+        driver.save_screenshot(f"{SCREENSHOT_DIR}/trip_com_{checkin}.png")
 
-        # A/Bテスト対応: 複数セレクターを試みる
         card_selectors = [
             ".list-item-versionb",
             ".compressmeta-hotel-wrap-v8",
@@ -225,7 +223,6 @@ def check_trip_com() -> list[dict]:
         if not cards:
             print("  [Trip.com] ホテルカードが見つかりません")
 
-        # カードのinnerTextから直接ホテル名・価格・URLを抽出
         hotel_data = driver.execute_script("""
             var results = [];
             var seen = new Set();
@@ -238,7 +235,6 @@ def check_trip_com() -> list[dict]:
                 var name = lines[0];
                 if (seen.has(name)) return;
                 seen.add(name);
-                // 「円」を含む最後の行から価格を取得
                 var priceText = '';
                 for (var i = lines.length - 1; i >= 0; i--) {
                     if (lines[i].includes('円')) { priceText = lines[i]; break; }
@@ -264,6 +260,7 @@ def check_trip_com() -> list[dict]:
                 results.append({
                     "site": "Trip.com",
                     "name": name,
+                    "checkin": checkin,
                     "price": f"¥{price:,}",
                     "price_num": price,
                     "url": h.get("url", ""),
@@ -283,11 +280,10 @@ def check_trip_com() -> list[dict]:
 
 KRW_TO_JPY = 0.11  # 1 KRW ≈ 0.11 JPY（固定レート）
 
-def check_toyoko_inn() -> list[dict]:
+def check_toyoko_inn(checkin: str, checkout: str) -> list[dict]:
     results = []
     try:
         headers = {"User-Agent": USER_AGENT}
-        # buildIdをトップページから取得
         r = requests.get("https://www.toyoko-inn.com/", headers=headers, timeout=10)
         m = re.search(r'"buildId":"([^"]+)"', r.text)
         if not m:
@@ -297,7 +293,7 @@ def check_toyoko_inn() -> list[dict]:
 
         url = (
             f"https://www.toyoko-inn.com/_next/data/{bid}/ja/search/result/room_plan.json"
-            f"?hotel=00194&people=2&room=1&smoking=noSmoking&start={CHECKIN}&end={CHECKOUT}"
+            f"?hotel=00194&people=2&room=1&smoking=noSmoking&start={checkin}&end={checkout}"
         )
         data = requests.get(url, headers=headers, timeout=15).json()
         plan = data["pageProps"]["planResponse"]
@@ -320,10 +316,13 @@ def check_toyoko_inn() -> list[dict]:
                 results.append({
                     "site": "東横INN釜山駅1",
                     "name": f"東横INN釜山駅1 {room_name}（{plan_name}）",
+                    "checkin": checkin,
                     "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
                     "price_num": price_jpy,
-                    "url": "https://www.toyoko-inn.com/search/result/room_plan/"
-                           f"?hotel=00194&people=2&room=1&smoking=noSmoking&start={CHECKIN}&end={CHECKOUT}",
+                    "url": (
+                        "https://www.toyoko-inn.com/search/result/room_plan/"
+                        f"?hotel=00194&people=2&room=1&smoking=noSmoking&start={checkin}&end={checkout}"
+                    ),
                 })
 
         if not results:
@@ -344,24 +343,28 @@ def check_toyoko_inn() -> list[dict]:
 def main() -> None:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"=== ホテル空室監視開始 {now} ===")
-    print(f"場所: 釜山　チェックイン: {CHECKIN}　チェックアウト: {CHECKOUT}")
     print(f"予算: ¥{BUDGET_JPY:,} 以下\n")
 
-    print("【Booking.com 確認中...】")
-    booking = check_booking_com()
+    all_hotels = []
 
-    print("\n【Trip.com 確認中...】")
-    trip = check_trip_com()
+    for checkin, checkout in DATE_RANGES:
+        print(f"--- {checkin} チェックイン ---")
 
-    print("\n【東横INN釜山駅1 確認中...】")
-    toyoko = check_toyoko_inn()
+        print("  【Booking.com】")
+        all_hotels += check_booking_com(checkin, checkout)
 
-    all_hotels = booking + trip + toyoko
-    print(f"\n=== 結果サマリー ===")
-    print(f"Booking.com: {len(booking)} 件 / Trip.com: {len(trip)} 件 / 東横INN: {len(toyoko)} 件 / 合計: {len(all_hotels)} 件")
+        print("  【Trip.com】")
+        all_hotels += check_trip_com(checkin, checkout)
+
+        print("  【東横INN釜山駅1】")
+        all_hotels += check_toyoko_inn(checkin, checkout)
+        print()
+
+    print(f"=== 結果サマリー ===")
+    print(f"合計: {len(all_hotels)} 件")
 
     if all_hotels:
-        all_hotels.sort(key=lambda h: h["price_num"])
+        all_hotels.sort(key=lambda h: (h["checkin"], h["price_num"]))
         send_discord_notification(all_hotels)
     else:
         print("予算内のホテルは見つかりませんでした")
