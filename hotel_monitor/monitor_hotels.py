@@ -73,11 +73,11 @@ def send_discord_notification(hotels: list[dict]) -> None:
     for h in hotels[:10]:
         embeds.append({
             "title": f"🏨 {h['name']}",
+            "url": h.get("url") or None,
             "description": (
                 f"**サイト**: {h['site']}\n"
                 f"**日程**: {h['checkin']} チェックイン\n"
-                f"**金額**: {h['price']}\n"
-                f"**URL**: {h.get('url', 'N/A')}"
+                f"**金額**: {h['price']}"
             ),
             "color": 0x00FF88,
             "timestamp": datetime.now(timezone.utc).isoformat(),
