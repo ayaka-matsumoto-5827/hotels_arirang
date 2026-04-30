@@ -116,7 +116,7 @@ def check_booking_com(checkin: str, checkout: str) -> list[dict]:
             "https://www.booking.com/searchresults.ja.html"
             "?ss=Busan%2C+South+Korea"
             f"&checkin={checkin}&checkout={checkout}"
-            "&group_adults=2&no_rooms=1"
+            "&group_adults=1&no_rooms=1"
             "&order=price"
             "&selected_currency=JPY"
         )
@@ -195,7 +195,7 @@ def check_trip_com(checkin: str, checkout: str) -> list[dict]:
             "https://jp.trip.com/hotels/list"
             "?city=253&cityName=Busan&countryId=42"
             f"&checkin={checkin}&checkout={checkout}"
-            "&adult=2&children=0&rooms=1"
+            "&adult=1&children=0&rooms=1"
             "&curr=JPY&locale=ja-JP&sortorder=1"
         )
         print(f"  [Trip.com] アクセス中...")
@@ -294,7 +294,7 @@ def _check_toyoko_inn_one(bid: str, hotel_code: str, checkin: str, checkout: str
     headers = {"User-Agent": USER_AGENT}
     url = (
         f"https://www.toyoko-inn.com/_next/data/{bid}/ja/search/result/room_plan.json"
-        f"?hotel={hotel_code}&people=2&room=1&smoking=noSmoking&start={checkin}&end={checkout}"
+        f"?hotel={hotel_code}&people=1&room=1&smoking=noSmoking&start={checkin}&end={checkout}"
     )
     data = requests.get(url, headers=headers, timeout=15).json()
     plan = data["pageProps"]["planResponse"]
@@ -323,7 +323,7 @@ def _check_toyoko_inn_one(bid: str, hotel_code: str, checkin: str, checkout: str
                 "price_num": price_jpy,
                 "url": (
                     "https://www.toyoko-inn.com/search/result/room_plan/"
-                    f"?hotel={hotel_code}&people=2&room=1&smoking=noSmoking&start={checkin}&end={checkout}"
+                    f"?hotel={hotel_code}&people=1&room=1&smoking=noSmoking&start={checkin}&end={checkout}"
                 ),
             })
 
@@ -373,7 +373,7 @@ def check_solaria_busan(checkin: str, checkout: str) -> list[dict]:
             f"https://booking-kr.nnr-h.com/booking/result"
             f"?code={SOLARIA_CODE}&checkin={ci}&checkout={co}"
             "&type=rooms&is_day_use=false&order=price_low_to_high"
-            "&is_including_occupied=false&rooms=%5B%7B%22adults%22%3A2%7D%5D"
+            "&is_including_occupied=false&rooms=%5B%7B%22adults%22%3A1%7D%5D"
         )
         driver.get(url)
         time.sleep(12)
@@ -491,7 +491,7 @@ def check_hound_hotel(checkin: str, checkout: str) -> list[dict]:
                 "check_in": checkin,
                 "check_out": checkout,
                 "rooms": "1",
-                "adult": "2",
+                "adult": "1",
                 "children": "0",
                 "channel_code": "WINGS_B2C",
             },
@@ -506,7 +506,7 @@ def check_hound_hotel(checkin: str, checkout: str) -> list[dict]:
             "Referer": (
                 f"https://be4.wingsbooking.com/HHD1/roomSelect"
                 f"?check_in={checkin}&check_out={checkout}"
-                "&rooms=1&adult=2&children=0&channel_code=WINGS_B2C"
+                "&rooms=1&adult=1&children=0&channel_code=WINGS_B2C"
             ),
         })
         resp = session.post(
@@ -516,7 +516,7 @@ def check_hound_hotel(checkin: str, checkout: str) -> list[dict]:
                 "check_in": checkin,
                 "check_out": checkout,
                 "rooms": "1",
-                "adult": "2",
+                "adult": "1",
                 "children": "0",
                 "channel_code": "WINGS_B2C",
                 "lang_type": "KO",
@@ -536,7 +536,7 @@ def check_hound_hotel(checkin: str, checkout: str) -> list[dict]:
         booking_url = (
             f"https://be4.wingsbooking.com/HHD1/roomSelect"
             f"?check_in={checkin}&check_out={checkout}"
-            "&rooms=1&adult=2&children=0&channel_code=WINGS_B2C"
+            "&rooms=1&adult=1&children=0&channel_code=WINGS_B2C"
         )
         seen = set()
         for room in rooms:
@@ -592,7 +592,7 @@ def check_ramada_busan(checkin: str, checkout: str) -> list[dict]:
         api_url = (
             "https://www.wyndhamhotels.com/BWSServices/services/hotels/availability/getRoomsAndRates"
             f"?brand_id=RA&checkout_date={to_wyndham_date(checkout)}&checkin_date={to_wyndham_date(checkin)}"
-            "&adults=2&children=0&rooms=1&propertyId=51043&useWRPoints=false&language=en-us"
+            "&adults=1&children=0&rooms=1&propertyId=51043&useWRPoints=false&language=en-us"
         )
         resp = requests.get(api_url, headers=headers, timeout=20)
         data = resp.json()
@@ -606,7 +606,7 @@ def check_ramada_busan(checkin: str, checkout: str) -> list[dict]:
             f"https://www.wyndhamhotels.com/ramada/busan-south-korea/ramada-encore-busan-station/rooms-rates"
             f"?checkInDate={checkin[5:7]}/{checkin[8:10]}/{checkin[0:4]}"
             f"&checkOutDate={checkout[5:7]}/{checkout[8:10]}/{checkout[0:4]}"
-            "&numberOfAdults=2&numberOfChildren=0&numRooms=1&useWRPoints=false"
+            "&numberOfAdults=1&numberOfChildren=0&numRooms=1&useWRPoints=false"
         )
 
         for room in rooms:
