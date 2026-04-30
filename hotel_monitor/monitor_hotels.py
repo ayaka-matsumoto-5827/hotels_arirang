@@ -356,6 +356,84 @@ def check_toyoko_inn(checkin: str, checkout: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Solaria Nishitetsu Hotel Busan（公式直販サイト）
+# ---------------------------------------------------------------------------
+
+SOLARIA_CODE = "d368e5b5-6868-4d64-8372-a91d5547031c"
+
+def check_solaria_busan(checkin: str, checkout: str) -> list[dict]:
+    results = []
+    driver = make_driver()
+    try:
+        ci = checkin.replace("-", "/").replace("/", "%2F")
+        co = checkout.replace("-", "/").replace("/", "%2F")
+        url = (
+            f"https://booking-kr.nnr-h.com/booking/result"
+            f"?code={SOLARIA_CODE}&checkin={ci}&checkout={co}"
+            "&type=rooms&is_day_use=false&order=price_low_to_high"
+            "&is_including_occupied=false&rooms=%5B%7B%22adults%22%3A2%7D%5D"
+        )
+        driver.get(url)
+        time.sleep(12)
+
+        text = driver.find_element(By.TAG_NAME, "body").text
+
+        if "空室が見つかりませんでした" in text:
+            print("  [Solaria Busan] 空室なし（満室）")
+            return results
+
+        # 通常価格を抽出: "通常価格\n₩ 168,740 1泊の料金" のパターン
+        prices_krw = re.findall(r"通常価格\s*\n?₩\s*([\d,]+)", text)
+        # 部屋タイプを抽出（検索結果の後、最初の「客室構造」の前のテキスト）
+        room_types = re.findall(r"^(.+)\n客室構造", text, re.MULTILINE)
+
+        if not prices_krw:
+            # ₩が見つからない場合はページテキストだけで判断
+            print(f"  [Solaria Busan] 空室あり（価格取得失敗）")
+            results.append({
+                "site": "Solaria Busan",
+                "name": "Solaria Nishitetsu Hotel Busan",
+                "checkin": checkin,
+                "price": "要確認",
+                "price_num": 0,
+                "url": url.replace("%2F", "/"),
+            })
+            return results
+
+        booking_url = url.replace("%2F", "/")
+        seen_prices = set()
+        for i, price_str in enumerate(prices_krw):
+            price_krw = int(price_str.replace(",", ""))
+            if price_krw in seen_prices:
+                continue
+            seen_prices.add(price_krw)
+            price_jpy = int(price_krw * KRW_TO_JPY)
+            room_name = room_types[i] if i < len(room_types) else "客室"
+            if price_jpy <= BUDGET_JPY:
+                print(f"    ✓ {room_name}: ₩{price_krw:,} ≈ ¥{price_jpy:,}")
+                results.append({
+                    "site": "Solaria Busan",
+                    "name": f"Solaria Nishitetsu Hotel Busan {room_name}",
+                    "checkin": checkin,
+                    "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
+                    "price_num": price_jpy,
+                    "url": booking_url,
+                })
+
+        if not results:
+            print(f"  [Solaria Busan] 空室あり（最安値₩{min(int(p.replace(',','')) for p in prices_krw):,}、予算超過）")
+        else:
+            print(f"  [Solaria Busan] {len(results)} 件の空室あり")
+
+    except Exception as e:
+        print(f"  [Solaria Busan] エラー: {e}")
+    finally:
+        driver.quit()
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # エントリーポイント
 # ---------------------------------------------------------------------------
 
@@ -377,6 +455,9 @@ def main() -> None:
 
         print("  【東横INN釜山駅1】")
         all_hotels += check_toyoko_inn(checkin, checkout)
+
+        print("  【Solaria Nishitetsu Hotel Busan】")
+        all_hotels += check_solaria_busan(checkin, checkout)
         print()
 
     print(f"=== 結果サマリー ===")
