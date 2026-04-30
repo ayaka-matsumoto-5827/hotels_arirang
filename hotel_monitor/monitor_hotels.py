@@ -571,84 +571,63 @@ def check_hound_hotel(checkin: str, checkout: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Ramada Encore by Wyndham Busan Station（hotelcheckins.com）
+# Ramada Encore by Wyndham Busan Station（Wyndham公式サイト）
 # ---------------------------------------------------------------------------
-
-RAMADA_HOTEL_ID = 48848742
 
 def check_ramada_busan(checkin: str, checkout: str) -> list[dict]:
     results = []
     try:
+        # YYYY-MM-DD → MM-DD-YYYY (Wyndham API形式)
+        def to_wyndham_date(d: str) -> str:
+            return f"{d[5:7]}-{d[8:10]}-{d[0:4]}"
+
         headers = {
             "User-Agent": USER_AGENT,
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Origin": "https://ramada-encore-wyndham-busan-station.hotelcheckins.com",
-            "Referer": "https://ramada-encore-wyndham-busan-station.hotelcheckins.com/",
-        }
-        body = {
-            "searchRequest": {
-                "dates": {"checkIn": checkin, "checkOut": checkout},
-                "guests": {"adults": 2, "childrenAge": [], "rooms": 1},
-            },
-            "hotelId": RAMADA_HOTEL_ID,
-            "internalSuppliers": False,
+            "Accept": "application/json, text/plain, */*",
+            "Referer": (
+                "https://www.wyndhamhotels.com/ramada/busan-south-korea/"
+                "ramada-encore-busan-station/rooms-rates"
+            ),
         }
         api_url = (
-            f"https://api.hotelcheckins.com/hotel-search/availability"
-            f"?destinationId={RAMADA_HOTEL_ID}&destinationType=3"
-            f"&checkIn={checkin}&checkOut={checkout}&adults=2&rooms=1"
+            "https://www.wyndhamhotels.com/BWSServices/services/hotels/availability/getRoomsAndRates"
+            f"?brand_id=RA&checkout_date={to_wyndham_date(checkout)}&checkin_date={to_wyndham_date(checkin)}"
+            "&adults=2&children=0&rooms=1&propertyId=51043&useWRPoints=false&language=en-us"
         )
-        resp = requests.post(api_url, headers=headers, json=body, timeout=20)
-        room_types = resp.json().get("roomTypes", [])
+        resp = requests.get(api_url, headers=headers, timeout=20)
+        data = resp.json()
 
-        if not room_types:
+        if data.get("status") == "Error":
             print("  [Ramada Busan] 空室なし")
             return results
 
+        rooms = data.get("roomsAndRates", {}).get("rooms", [])
         booking_url = (
-            f"https://ramada-encore-wyndham-busan-station.hotelcheckins.com/ja/reservation"
-            f"?destinationId={RAMADA_HOTEL_ID}&destinationType=3"
-            f"&checkIn={checkin}&checkOut={checkout}&adults=2&rooms=1"
+            f"https://www.wyndhamhotels.com/ramada/busan-south-korea/ramada-encore-busan-station/rooms-rates"
+            f"?checkInDate={checkin[5:7]}/{checkin[8:10]}/{checkin[0:4]}"
+            f"&checkOutDate={checkout[5:7]}/{checkout[8:10]}/{checkout[0:4]}"
+            "&numberOfAdults=2&numberOfChildren=0&numRooms=1&useWRPoints=false"
         )
-        seen = set()
-        for rt in room_types:
-            if rt.get("needsSignIn"):
-                continue
-            room_name = rt.get("room", {}).get("title", "客室")
-            plans = rt.get("roomRate", {}).get("roomPlans", {})
-            for plan in plans.values():
-                pricing = plan.get("perRoomPricing", {})
-                price_jpy = pricing.get("chargeTotal", {}).get("amount")
-                if price_jpy is None:
-                    price_jpy = pricing.get("allInclusivePrice", {}).get("amount", 0)
-                price_jpy = int(price_jpy)
-                key = (room_name, price_jpy)
-                if key in seen:
-                    continue
-                seen.add(key)
-                if price_jpy <= BUDGET_JPY:
-                    print(f"    ✓ {room_name}: ¥{price_jpy:,}")
-                    results.append({
-                        "site": "Ramada Busan (hotelcheckins)",
-                        "name": f"Ramada Encore by Wyndham Busan Station {room_name}",
-                        "checkin": checkin,
-                        "price": f"¥{price_jpy:,}",
-                        "price_num": price_jpy,
-                        "url": booking_url,
-                    })
 
-        if not results:
-            # 最安値を報告
-            all_prices = []
-            for rt in room_types:
-                for plan in rt.get("roomRate", {}).get("roomPlans", {}).values():
-                    p = plan.get("perRoomPricing", {}).get("chargeTotal", {}).get("amount")
-                    if p:
-                        all_prices.append(int(p))
-            min_price = min(all_prices) if all_prices else 0
-            print(f"  [Ramada Busan] 空室あり（最安値¥{min_price:,}、予算超過）")
-        else:
+        for room in rooms:
+            name = room.get("shortName", "客室")
+            price_krw = room.get("lowRate", 0)
+            price_jpy = int(price_krw * KRW_TO_JPY)
+            if price_jpy <= BUDGET_JPY:
+                print(f"    ✓ {name}: ₩{price_krw:,} ≈ ¥{price_jpy:,}")
+                results.append({
+                    "site": "Ramada Busan (Wyndham公式)",
+                    "name": f"Ramada Encore by Wyndham Busan Station {name}",
+                    "checkin": checkin,
+                    "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
+                    "price_num": price_jpy,
+                    "url": booking_url,
+                })
+
+        if not results and rooms:
+            min_krw = min(r.get("lowRate", 0) for r in rooms)
+            print(f"  [Ramada Busan] 空室あり（最安値₩{min_krw:,}≈¥{int(min_krw*KRW_TO_JPY):,}、予算超過）")
+        elif results:
             print(f"  [Ramada Busan] {len(results)} 件の空室あり")
 
     except Exception as e:
