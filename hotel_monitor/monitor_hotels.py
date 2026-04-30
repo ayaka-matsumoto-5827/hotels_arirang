@@ -571,6 +571,93 @@ def check_hound_hotel(checkin: str, checkout: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Ramada Encore by Wyndham Busan Station（hotelcheckins.com）
+# ---------------------------------------------------------------------------
+
+RAMADA_HOTEL_ID = 48848742
+
+def check_ramada_busan(checkin: str, checkout: str) -> list[dict]:
+    results = []
+    try:
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Origin": "https://ramada-encore-wyndham-busan-station.hotelcheckins.com",
+            "Referer": "https://ramada-encore-wyndham-busan-station.hotelcheckins.com/",
+        }
+        body = {
+            "searchRequest": {
+                "dates": {"checkIn": checkin, "checkOut": checkout},
+                "guests": {"adults": 2, "childrenAge": [], "rooms": 1},
+            },
+            "hotelId": RAMADA_HOTEL_ID,
+            "internalSuppliers": False,
+        }
+        api_url = (
+            f"https://api.hotelcheckins.com/hotel-search/availability"
+            f"?destinationId={RAMADA_HOTEL_ID}&destinationType=3"
+            f"&checkIn={checkin}&checkOut={checkout}&adults=2&rooms=1"
+        )
+        resp = requests.post(api_url, headers=headers, json=body, timeout=20)
+        room_types = resp.json().get("roomTypes", [])
+
+        if not room_types:
+            print("  [Ramada Busan] 空室なし")
+            return results
+
+        booking_url = (
+            f"https://ramada-encore-wyndham-busan-station.hotelcheckins.com/ja/reservation"
+            f"?destinationId={RAMADA_HOTEL_ID}&destinationType=3"
+            f"&checkIn={checkin}&checkOut={checkout}&adults=2&rooms=1"
+        )
+        seen = set()
+        for rt in room_types:
+            if rt.get("needsSignIn"):
+                continue
+            room_name = rt.get("room", {}).get("title", "客室")
+            plans = rt.get("roomRate", {}).get("roomPlans", {})
+            for plan in plans.values():
+                pricing = plan.get("perRoomPricing", {})
+                price_jpy = pricing.get("chargeTotal", {}).get("amount")
+                if price_jpy is None:
+                    price_jpy = pricing.get("allInclusivePrice", {}).get("amount", 0)
+                price_jpy = int(price_jpy)
+                key = (room_name, price_jpy)
+                if key in seen:
+                    continue
+                seen.add(key)
+                if price_jpy <= BUDGET_JPY:
+                    print(f"    ✓ {room_name}: ¥{price_jpy:,}")
+                    results.append({
+                        "site": "Ramada Busan (hotelcheckins)",
+                        "name": f"Ramada Encore by Wyndham Busan Station {room_name}",
+                        "checkin": checkin,
+                        "price": f"¥{price_jpy:,}",
+                        "price_num": price_jpy,
+                        "url": booking_url,
+                    })
+
+        if not results:
+            # 最安値を報告
+            all_prices = []
+            for rt in room_types:
+                for plan in rt.get("roomRate", {}).get("roomPlans", {}).values():
+                    p = plan.get("perRoomPricing", {}).get("chargeTotal", {}).get("amount")
+                    if p:
+                        all_prices.append(int(p))
+            min_price = min(all_prices) if all_prices else 0
+            print(f"  [Ramada Busan] 空室あり（最安値¥{min_price:,}、予算超過）")
+        else:
+            print(f"  [Ramada Busan] {len(results)} 件の空室あり")
+
+    except Exception as e:
+        print(f"  [Ramada Busan] エラー: {e}")
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # エントリーポイント
 # ---------------------------------------------------------------------------
 
@@ -598,6 +685,9 @@ def main() -> None:
 
         print("  【Haeundae Hound Hotel Signature】")
         all_hotels += check_hound_hotel(checkin, checkout)
+
+        print("  【Ramada Encore by Wyndham Busan Station】")
+        all_hotels += check_ramada_busan(checkin, checkout)
         print()
 
     print(f"=== 結果サマリー ===")
