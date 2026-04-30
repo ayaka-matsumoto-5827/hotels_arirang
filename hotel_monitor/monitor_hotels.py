@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 釜山ホテル空室監視スクリプト
-Booking.com / Trip.com / 東横INN を監視し、予算内のホテルが見つかったらDiscordに通知する
+Booking.com / Trip.com / 東横INN / Solaria / Hound Hotel / Ramada Encore を監視し、
+予算内のホテルが見つかったらDiscordに通知する
 """
 
 import json
@@ -366,8 +367,8 @@ def check_solaria_busan(checkin: str, checkout: str) -> list[dict]:
     results = []
     driver = make_driver()
     try:
-        ci = checkin.replace("-", "/").replace("/", "%2F")
-        co = checkout.replace("-", "/").replace("/", "%2F")
+        ci = checkin.replace("-", "%2F")
+        co = checkout.replace("-", "%2F")
         url = (
             f"https://booking-kr.nnr-h.com/booking/result"
             f"?code={SOLARIA_CODE}&checkin={ci}&checkout={co}"
@@ -477,9 +478,8 @@ def _hound_make_param(params: dict) -> dict:
 def check_hound_hotel(checkin: str, checkout: str) -> list[dict]:
     results = []
     try:
-        ua = USER_AGENT
         session = requests.Session()
-        session.headers["User-Agent"] = ua
+        session.headers["User-Agent"] = USER_AGENT
 
         # 1) Establish JSESSIONID
         session.get("https://be4.wingsbooking.com/HHD1", timeout=15)
