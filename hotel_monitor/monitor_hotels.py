@@ -278,6 +278,66 @@ def check_trip_com() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# 東横INN釜山駅1（公式サイト直接）
+# ---------------------------------------------------------------------------
+
+KRW_TO_JPY = 0.11  # 1 KRW ≈ 0.11 JPY（固定レート）
+
+def check_toyoko_inn() -> list[dict]:
+    results = []
+    try:
+        headers = {"User-Agent": USER_AGENT}
+        # buildIdをトップページから取得
+        r = requests.get("https://www.toyoko-inn.com/", headers=headers, timeout=10)
+        m = re.search(r'"buildId":"([^"]+)"', r.text)
+        if not m:
+            print("  [東横INN] buildId取得失敗")
+            return results
+        bid = m.group(1)
+
+        url = (
+            f"https://www.toyoko-inn.com/_next/data/{bid}/ja/search/result/room_plan.json"
+            f"?hotel=00194&people=2&room=1&smoking=noSmoking&start={CHECKIN}&end={CHECKOUT}"
+        )
+        data = requests.get(url, headers=headers, timeout=15).json()
+        plan = data["pageProps"]["planResponse"]
+
+        if not plan.get("canReservation"):
+            print("  [東横INN] 予約不可")
+            return results
+
+        for rt in plan.get("roomTypeList", []):
+            for p in rt.get("plans", []):
+                general_vacant = p.get("vacant", {}).get("generalVacantRoom", 0)
+                member_vacant = p.get("vacant", {}).get("membershipVacantRoom", 0)
+                if general_vacant == 0 and member_vacant == 0:
+                    continue
+                price_krw = p.get("price", {}).get("generalPrice", 0)
+                price_jpy = int(price_krw * KRW_TO_JPY)
+                room_name = rt.get("roomTypeName", "")
+                plan_name = p.get("planName", "")
+                print(f"    ✓ {room_name}({plan_name}): ₩{price_krw:,} ≈ ¥{price_jpy:,} 空室:{general_vacant}")
+                results.append({
+                    "site": "東横INN釜山駅1",
+                    "name": f"東横INN釜山駅1 {room_name}（{plan_name}）",
+                    "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
+                    "price_num": price_jpy,
+                    "url": "https://www.toyoko-inn.com/search/result/room_plan/"
+                           f"?hotel=00194&people=2&room=1&smoking=noSmoking&start={CHECKIN}&end={CHECKOUT}",
+                })
+
+        if not results:
+            print("  [東横INN] 空室なし（全プラン満室）")
+        else:
+            print(f"  [東横INN] {len(results)} 件の空室あり")
+
+    except Exception as e:
+        print(f"  [東横INN] エラー: {e}")
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # エントリーポイント
 # ---------------------------------------------------------------------------
 
@@ -293,9 +353,12 @@ def main() -> None:
     print("\n【Trip.com 確認中...】")
     trip = check_trip_com()
 
-    all_hotels = booking + trip
+    print("\n【東横INN釜山駅1 確認中...】")
+    toyoko = check_toyoko_inn()
+
+    all_hotels = booking + trip + toyoko
     print(f"\n=== 結果サマリー ===")
-    print(f"Booking.com: {len(booking)} 件 / Trip.com: {len(trip)} 件 / 合計: {len(all_hotels)} 件")
+    print(f"Booking.com: {len(booking)} 件 / Trip.com: {len(trip)} 件 / 東横INN: {len(toyoko)} 件 / 合計: {len(all_hotels)} 件")
 
     if all_hotels:
         all_hotels.sort(key=lambda h: h["price_num"])
