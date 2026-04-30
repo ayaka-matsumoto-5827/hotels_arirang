@@ -4,6 +4,7 @@
 Booking.com / Trip.com / 東横INN を監視し、予算内のホテルが見つかったらDiscordに通知する
 """
 
+import json
 import os
 import re
 import time
@@ -434,6 +435,142 @@ def check_solaria_busan(checkin: str, checkout: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Haeundae Hound Hotel Signature（公式直販サイト）
+# ---------------------------------------------------------------------------
+
+HOUND_SESSION_OBJ = {
+    "SS_PMS_SEQ_NO": "461",
+    "SS_PMS_CODE": "HHD1",
+    "SS_MEMB_SEQ_NO": "",
+    "SS_MEMB_MASTER_NO": "",
+    "SS_MEMB_LASTNAME": "",
+    "SS_MEMB_FIRSTNAME": "",
+    "SS_MEMB_EMAIL": "",
+    "SS_MEMB_TEL": "",
+    "SS_LANG_TYPE": "KO",
+    "SS_REMOTE_IP": "",
+    "SS_LOGIN_TYPE": "",
+    "SS_SNS_NAVER_CLIENT_ID": "hayDtzmpoiuhJl1srBnV",
+    "SS_SNS_NAVER_CLIENT_SECRET": "iuzEyiZE8y",
+    "SS_SNS_NAVER_RETURN_HOST": "https://be4.wingsbooking.com",
+    "SS_OPERATION_MODE": "prod",
+    "SS_PRIVACY_HOTEL": "false",
+    "SS_CURRENCY_TYPE": "KRW",
+    "SS_MEMBERSHIP_SEQ_NO": "",
+    "SS_MEMBERSHIP_TYPE": "",
+    "SS_MEMBERSHIP_POINT_TYPE": "",
+    "SS_MEMBERSHIP_COUP_CNT": "",
+    "SS_MEMBERSHIP_COUP_PRICE": "",
+    "SS_MEMBERSHIP_POINT_PRICE": "",
+    "SS_EXT_CHANNEL_SEQ_NO": "",
+    "SS_ARRIVAL_TIME_FLAG": "N",
+    "SS_ARRIVAL_TIME_START": "",
+    "SS_ARRIVAL_TIME_END": "",
+    "SS_USE_LANG_TYPE": "KO|EN",
+}
+
+def _hound_make_param(params: dict) -> dict:
+    merged = {**params, **HOUND_SESSION_OBJ}
+    return {"parameter": json.dumps(merged)}
+
+
+def check_hound_hotel(checkin: str, checkout: str) -> list[dict]:
+    results = []
+    try:
+        ua = USER_AGENT
+        session = requests.Session()
+        session.headers["User-Agent"] = ua
+
+        # 1) Establish JSESSIONID
+        session.get("https://be4.wingsbooking.com/HHD1", timeout=15)
+
+        # 2) Load roomSelect so the server stores the date params in session
+        session.get(
+            "https://be4.wingsbooking.com/HHD1/roomSelect",
+            params={
+                "check_in": checkin,
+                "check_out": checkout,
+                "rooms": "1",
+                "adult": "2",
+                "children": "0",
+                "channel_code": "WINGS_B2C",
+            },
+            timeout=15,
+        )
+
+        # 3) Call roomList API
+        session.headers.update({
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Referer": (
+                f"https://be4.wingsbooking.com/HHD1/roomSelect"
+                f"?check_in={checkin}&check_out={checkout}"
+                "&rooms=1&adult=2&children=0&channel_code=WINGS_B2C"
+            ),
+        })
+        resp = session.post(
+            "https://be4.wingsbooking.com/HHD1/user/hotel/roomList",
+            data=_hound_make_param({
+                "pms_seq_no": "461",
+                "check_in": checkin,
+                "check_out": checkout,
+                "rooms": "1",
+                "adult": "2",
+                "children": "0",
+                "channel_code": "WINGS_B2C",
+                "lang_type": "KO",
+                "prm_seq_no": "",
+                "cpny_seq_no": "",
+                "mmbrs_seq_no": "",
+                "ext_channel_seq_no": "",
+            }),
+            timeout=15,
+        )
+        rooms = resp.json().get("result", [])
+
+        if not rooms:
+            print("  [Hound Hotel] 空室なし")
+            return results
+
+        booking_url = (
+            f"https://be4.wingsbooking.com/HHD1/roomSelect"
+            f"?check_in={checkin}&check_out={checkout}"
+            "&rooms=1&adult=2&children=0&channel_code=WINGS_B2C"
+        )
+        seen = set()
+        for room in rooms:
+            room_name = room.get("room_name", "客室")
+            daily = room.get("daily_rate", [])
+            price_krw = int(daily[0]["day_rate"]) if daily else int(room.get("basic_rate", 0))
+            if price_krw in seen:
+                continue
+            seen.add(price_krw)
+            price_jpy = int(price_krw * KRW_TO_JPY)
+            if price_jpy <= BUDGET_JPY:
+                print(f"    ✓ {room_name}: ₩{price_krw:,} ≈ ¥{price_jpy:,}")
+                results.append({
+                    "site": "Hound Hotel Signature",
+                    "name": f"Haeundae Hound Hotel Signature {room_name}",
+                    "checkin": checkin,
+                    "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
+                    "price_num": price_jpy,
+                    "url": booking_url,
+                })
+
+        if not results:
+            min_krw = min(int((r.get("daily_rate") or [{}])[0].get("day_rate", 0)) for r in rooms)
+            print(f"  [Hound Hotel] 空室あり（最安値₩{min_krw:,}、予算超過）")
+        else:
+            print(f"  [Hound Hotel] {len(results)} 件の空室あり")
+
+    except Exception as e:
+        print(f"  [Hound Hotel] エラー: {e}")
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # エントリーポイント
 # ---------------------------------------------------------------------------
 
@@ -458,6 +595,9 @@ def main() -> None:
 
         print("  【Solaria Nishitetsu Hotel Busan】")
         all_hotels += check_solaria_busan(checkin, checkout)
+
+        print("  【Haeundae Hound Hotel Signature】")
+        all_hotels += check_hound_hotel(checkin, checkout)
         print()
 
     print(f"=== 結果サマリー ===")
