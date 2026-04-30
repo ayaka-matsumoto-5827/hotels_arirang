@@ -61,41 +61,81 @@ def make_driver() -> webdriver.Chrome:
 
 
 # ---------------------------------------------------------------------------
+# 既出ホテル管理
+# ---------------------------------------------------------------------------
+
+SEEN_FILE = "seen_hotels.json"
+
+def _hotel_key(h: dict) -> str:
+    return f"{h['name']}|{h['checkin']}"
+
+def load_seen() -> set[str]:
+    try:
+        with open(SEEN_FILE) as f:
+            return set(json.load(f))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+def save_seen(keys: set[str]) -> None:
+    with open(SEEN_FILE, "w") as f:
+        json.dump(list(keys), f, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
 # Discord 通知
 # ---------------------------------------------------------------------------
+
+def _post_discord(payload: dict) -> bool:
+    resp = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+    if resp.status_code == 204:
+        return True
+    print(f"[Discord] 送信失敗: HTTP {resp.status_code} / {resp.text}")
+    return False
+
 
 def send_discord_notification(hotels: list[dict]) -> None:
     if not DISCORD_WEBHOOK_URL:
         print("[Discord] DISCORD_WEBHOOK_URL が未設定のためスキップします")
         return
 
-    embeds = []
-    for h in hotels[:10]:
-        embeds.append({
-            "title": f"🏨 {h['name']}",
-            "url": h.get("url") or None,
-            "description": (
-                f"**サイト**: {h['site']}\n"
-                f"**日程**: {h['checkin']} チェックイン\n"
-                f"**金額**: {h['price']}"
+    seen = load_seen()
+    new_hotels = [h for h in hotels if _hotel_key(h) not in seen]
+    old_hotels = [h for h in hotels if _hotel_key(h) in seen]
+
+    # 新規ホテル: 1件ずつ目立つembedで送信
+    for h in new_hotels[:10]:
+        payload = {
+            "content": "🆕 **新着！予算内の空室が見つかりました**",
+            "embeds": [{
+                "title": f"🏨 {h['name']}",
+                "url": h.get("url") or None,
+                "description": (
+                    f"**サイト**: {h['site']}\n"
+                    f"**日程**: {h['checkin']} チェックイン\n"
+                    f"**金額**: {h['price']}"
+                ),
+                "color": 0x00FF88,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }],
+        }
+        _post_discord(payload)
+
+    # 既出ホテル: まとめてテキストのみで送信
+    if old_hotels:
+        lines = [f"・{h['checkin']} {h['name']} {h['price']}" for h in old_hotels[:20]]
+        payload = {
+            "content": (
+                f"📋 **継続中の空室**（{len(old_hotels)}件）\n"
+                + "\n".join(lines)
             ),
-            "color": 0x00FF88,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        }
+        _post_discord(payload)
 
-    payload = {
-        "content": (
-            f"💡 **釜山ホテル空室情報**\n"
-            f"予算 ¥{BUDGET_JPY:,} 以下のホテルが **{len(hotels)}** 件見つかりました！"
-        ),
-        "embeds": embeds,
-    }
+    # 既出セットを今回の結果で更新
+    save_seen(seen | {_hotel_key(h) for h in hotels})
 
-    resp = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
-    if resp.status_code == 204:
-        print(f"[Discord] 通知送信完了 ({len(hotels)} 件)")
-    else:
-        print(f"[Discord] 送信失敗: HTTP {resp.status_code} / {resp.text}")
+    total_sent = min(len(new_hotels), 10) + (1 if old_hotels else 0)
+    print(f"[Discord] 送信完了 — 新規:{len(new_hotels)}件 / 既出:{len(old_hotels)}件")
 
 
 def parse_price_jpy(text: str) -> int | None:
