@@ -17,7 +17,7 @@ from selenium_stealth import stealth
 
 # --- 設定 ---
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
-BUDGET_JPY = 20_000
+BUDGET_JPY = 30_000
 CHECKIN = "2026-06-12"
 CHECKOUT = "2026-06-13"
 SCREENSHOT_DIR = "screenshots"
