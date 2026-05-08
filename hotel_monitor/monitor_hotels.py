@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 釜山ホテル空室監視スクリプト
-Booking.com / Trip.com / 東横INN / Solaria / Hound Hotel / Ramada Encore を監視し、
+Booking.com / Trip.com / 東横INN / Solaria / Hound Hotel / Ramada Encore / 釜山アルピナ / Asti Hotel / H-Avenue Hotel を監視し、
 予算内のホテルが見つかったらDiscordに通知する
 """
 
@@ -120,16 +120,24 @@ def send_discord_notification(hotels: list[dict]) -> None:
         }
         _post_discord(payload)
 
-    # 既出ホテル: まとめてテキストのみで送信
+    # 既出ホテル: 2000文字以内に収まるようチャンク分割して送信
     if old_hotels:
-        lines = [f"・{h['checkin']} {h['name']} {h['price']}" for h in old_hotels[:20]]
-        payload = {
-            "content": (
-                f"📋 **継続中の空室**（{len(old_hotels)}件）\n"
-                + "\n".join(lines)
-            ),
-        }
-        _post_discord(payload)
+        all_lines = [
+            f"・{h['checkin']} [{h['name']}](<{h['url']}>) {h['price']}" if h.get("url")
+            else f"・{h['checkin']} {h['name']} {h['price']}"
+            for h in old_hotels
+        ]
+        header = f"📋 **継続中の空室**（{len(old_hotels)}件）\n"
+        chunk, chunk_len = [header], len(header)
+        for line in all_lines:
+            addition = line + "\n"
+            if chunk_len + len(addition) > 1900:
+                _post_discord({"content": "".join(chunk)})
+                chunk, chunk_len = [], 0
+            chunk.append(addition)
+            chunk_len += len(addition)
+        if chunk:
+            _post_discord({"content": "".join(chunk)})
 
     # 既出セットを今回の結果で更新
     save_seen(seen | {_hotel_key(h) for h in hotels})
@@ -677,6 +685,321 @@ def check_ramada_busan(checkin: str, checkout: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Hotel Foret Premier Nampo（be4.wingsbooking.com/FORET4141）
+# ---------------------------------------------------------------------------
+
+FORET_SESSION_OBJ = {
+    "SS_PMS_SEQ_NO": "637",
+    "SS_PMS_CODE": "FORET4141",
+    "SS_MEMB_SEQ_NO": "",
+    "SS_MEMB_MASTER_NO": "",
+    "SS_MEMB_LASTNAME": "",
+    "SS_MEMB_FIRSTNAME": "",
+    "SS_MEMB_EMAIL": "",
+    "SS_MEMB_TEL": "",
+    "SS_LANG_TYPE": "KO",
+    "SS_REMOTE_IP": "",
+    "SS_LOGIN_TYPE": "",
+    "SS_SNS_NAVER_CLIENT_ID": "hayDtzmpoiuhJl1srBnV",
+    "SS_SNS_NAVER_CLIENT_SECRET": "iuzEyiZE8y",
+    "SS_SNS_NAVER_RETURN_HOST": "https://be4.wingsbooking.com",
+    "SS_OPERATION_MODE": "prod",
+    "SS_PRIVACY_HOTEL": "false",
+    "SS_CURRENCY_TYPE": "KRW",
+    "SS_MEMBERSHIP_SEQ_NO": "",
+    "SS_MEMBERSHIP_TYPE": "",
+    "SS_MEMBERSHIP_POINT_TYPE": "",
+    "SS_MEMBERSHIP_COUP_CNT": "",
+    "SS_MEMBERSHIP_COUP_PRICE": "",
+    "SS_MEMBERSHIP_POINT_PRICE": "",
+    "SS_EXT_CHANNEL_SEQ_NO": "",
+    "SS_ARRIVAL_TIME_FLAG": "N",
+    "SS_ARRIVAL_TIME_START": "",
+    "SS_ARRIVAL_TIME_END": "",
+    "SS_USE_LANG_TYPE": "KO|EN",
+}
+
+
+def check_foret_premier(checkin: str, checkout: str) -> list[dict]:
+    results = []
+    try:
+        session = requests.Session()
+        session.headers["User-Agent"] = USER_AGENT
+
+        session.get("https://be4.wingsbooking.com/FORET4141", timeout=15)
+        session.get(
+            "https://be4.wingsbooking.com/FORET4141/roomSelect",
+            params={
+                "check_in": checkin,
+                "check_out": checkout,
+                "rooms": "1",
+                "adult": "1",
+                "children": "0",
+                "channel_code": "WINGS_B2C",
+            },
+            timeout=15,
+        )
+
+        session.headers.update({
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Referer": (
+                f"https://be4.wingsbooking.com/FORET4141/roomSelect"
+                f"?check_in={checkin}&check_out={checkout}"
+                "&rooms=1&adult=1&children=0&channel_code=WINGS_B2C"
+            ),
+        })
+        params = {
+            **FORET_SESSION_OBJ,
+            "pms_seq_no": "637",
+            "check_in": checkin,
+            "check_out": checkout,
+            "rooms": "1",
+            "adult": "1",
+            "children": "0",
+            "channel_code": "WINGS_B2C",
+            "lang_type": "KO",
+            "prm_seq_no": "",
+            "cpny_seq_no": "",
+            "mmbrs_seq_no": "",
+            "ext_channel_seq_no": "",
+        }
+        resp = session.post(
+            "https://be4.wingsbooking.com/FORET4141/user/hotel/roomList",
+            data={"parameter": json.dumps(params)},
+            timeout=15,
+        )
+        rooms = resp.json().get("result", [])
+
+        if not rooms:
+            print("  [Hotel Foret Premier] 空室なし")
+            return results
+
+        booking_url = (
+            f"https://be4.wingsbooking.com/FORET4141/roomSelect"
+            f"?check_in={checkin}&check_out={checkout}"
+            "&rooms=1&adult=1&children=0&channel_code=WINGS_B2C"
+        )
+        seen = set()
+        for room in rooms:
+            room_name = room.get("room_name", "客室")
+            daily = room.get("daily_rate", [])
+            price_krw = int(daily[0]["day_rate"]) if daily else int(room.get("basic_rate", 0))
+            if price_krw in seen:
+                continue
+            seen.add(price_krw)
+            price_jpy = int(price_krw * KRW_TO_JPY)
+            if price_jpy <= BUDGET_JPY:
+                print(f"    ✓ {room_name}: ₩{price_krw:,} ≈ ¥{price_jpy:,}")
+                results.append({
+                    "site": "Hotel Foret Premier",
+                    "name": f"Hotel Foret Premier Nampo {room_name}",
+                    "checkin": checkin,
+                    "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
+                    "price_num": price_jpy,
+                    "url": booking_url,
+                })
+
+        if not results and rooms:
+            daily = rooms[0].get("daily_rate", [])
+            min_krw = min(
+                int(r.get("daily_rate", [{}])[0].get("day_rate", 0)) if r.get("daily_rate") else int(r.get("basic_rate", 0))
+                for r in rooms
+            )
+            print(f"  [Hotel Foret Premier] 空室あり（最安値₩{min_krw:,}≈¥{int(min_krw*KRW_TO_JPY):,}、予算超過）")
+        elif results:
+            print(f"  [Hotel Foret Premier] {len(results)} 件の空室あり")
+
+    except Exception as e:
+        print(f"  [Hotel Foret Premier] エラー: {e}")
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Asti Hotel（be.wingsbooking.com/en/AST1）
+# ---------------------------------------------------------------------------
+
+def check_asti_hotel(checkin: str, checkout: str) -> list[dict]:
+    results = []
+    try:
+        session = requests.Session()
+        session.headers.update({"User-Agent": USER_AGENT, "Accept-Encoding": "identity"})
+        session.get("https://be.wingsbooking.com/en/AST1", timeout=15)
+
+        r = session.get(
+            "https://be.wingsbooking.com/en/AST1",
+            params={"checkIn": checkin, "checkOut": checkout, "rooms": "1", "adults": "1", "children": "0"},
+            timeout=15,
+        )
+        m = re.search(r'<script id="rate_detail_json"[^>]*>(.*?)</script>', r.text, re.DOTALL)
+        if not m:
+            print("  [Asti Hotel] データ取得失敗")
+            return results
+
+        rate_data = json.loads(m.group(1).strip())
+        if not rate_data:
+            print("  [Asti Hotel] 空室なし（満室）")
+            return results
+
+        booking_url = (
+            f"https://be.wingsbooking.com/en/AST1"
+            f"?checkIn={checkin}&checkOut={checkout}&rooms=1&adults=1&children=0"
+        )
+
+        for room_id, room in rate_data.items():
+            room_name = room.get("room_info", {}).get("room_name", "客室")
+            for rate_entry in room.get("rate_info", []):
+                detail = rate_entry.get("rate_detail", {})
+                rate_seq = detail.get("rate_seq_no", "")
+                remaining = int(room.get(rate_seq, {}).get("remin_room_cnt", 0))
+                if remaining == 0:
+                    continue
+                price_krw = int(detail.get("day_rate", 0))
+                price_jpy = int(price_krw * KRW_TO_JPY)
+                if price_jpy > BUDGET_JPY:
+                    continue
+                plan_name = detail.get("rate_package_name_tx", "")
+                display_name = f"{room_name}（{plan_name}）" if plan_name else room_name
+                print(f"    ✓ {display_name}: ₩{price_krw:,} ≈ ¥{price_jpy:,} 残:{remaining}部屋")
+                results.append({
+                    "site": "Asti Hotel",
+                    "name": f"Asti Hotel {display_name}",
+                    "checkin": checkin,
+                    "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
+                    "price_num": price_jpy,
+                    "url": booking_url,
+                })
+
+        if not results:
+            min_krw = min(
+                int(e.get("rate_detail", {}).get("day_rate", 0))
+                for room in rate_data.values()
+                for e in room.get("rate_info", [])
+                if e.get("rate_detail", {}).get("day_rate")
+            ) if rate_data else 0
+            if min_krw:
+                print(f"  [Asti Hotel] 空室あり（最安値₩{min_krw:,}≈¥{int(min_krw*KRW_TO_JPY):,}、予算超過）")
+            else:
+                print("  [Asti Hotel] 空室なし（満室）")
+        else:
+            print(f"  [Asti Hotel] {len(results)} 件の空室あり")
+
+    except Exception as e:
+        print(f"  [Asti Hotel] エラー: {e}")
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# hub.hotelstory.com 共通ヘルパー（アルピナ・H-Avenue 等）
+# ---------------------------------------------------------------------------
+
+def _check_hotelstory(hotel_code: str, site_name: str, hotel_display_name: str,
+                      checkin: str, checkout: str) -> list[dict]:
+    results = []
+    try:
+        year_month = checkin[:7]
+        headers = {"User-Agent": USER_AGENT}
+        r = requests.get(
+            "https://hub.hotelstory.com/aG90ZWxzdG9yeQ/calendar",
+            params={"v_Use": hotel_code, "v_HotelInfo": "Y", "v_caldate": year_month},
+            headers=headers,
+            timeout=15,
+        )
+        html = r.text
+
+        idx = html.find(f"v_StartDate={checkin}&v_EndDate={checkout}")
+        if idx < 0:
+            print(f"  [{site_name}] 空室なし（満室）")
+            return results
+
+        # </td> で日付セルの終端を検出し、隣の日付に溢れないよう切り詰める
+        end_idx = html.find("</td>", idx)
+        block = html[idx: end_idx if end_idx > idx else idx + 6000]
+        rooms = re.findall(
+            r'class="name">(.*?)</div>.*?class="cost">([\d,]+)<span>([\d/\s]+)</span>',
+            block,
+            re.DOTALL,
+        )
+
+        booking_url = (
+            "https://hub.hotelstory.com/aG90ZWxzdG9yeQ/rooms"
+            f"?v_Use={hotel_code}&v_HotelInfo=Y&v_StartDate={checkin}&v_EndDate={checkout}&v_RoomCount=1&v_Adult=1"
+        )
+
+        for name, price_str, avail in rooms:
+            price_krw = int(price_str.replace(",", ""))
+            price_jpy = int(price_krw * KRW_TO_JPY)
+            parts = avail.strip().split("/")
+            available = int(parts[1]) if len(parts) >= 2 else 0
+            if available == 0 or price_jpy > BUDGET_JPY:
+                continue
+            name = name.strip()
+            print(f"    ✓ {name}: ₩{price_krw:,} ≈ ¥{price_jpy:,} 空室:{available}")
+            results.append({
+                "site": site_name,
+                "name": f"{hotel_display_name} {name}",
+                "checkin": checkin,
+                "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
+                "price_num": price_jpy,
+                "url": booking_url,
+            })
+
+        if not results:
+            print(f"  [{site_name}] 空室なし（予算超過または満室）")
+        else:
+            print(f"  [{site_name}] {len(results)} 件の空室あり")
+
+    except Exception as e:
+        print(f"  [{site_name}] エラー: {e}")
+
+    return results
+
+
+def _hotelstory_with_verify(hotel_code: str, site_name: str, hotel_display_name: str,
+                            checkin: str, checkout: str) -> list[dict]:
+    """カレンダーで候補が見つかった場合、ルームページ（SPA）で実在庫を確認してから返す"""
+    calendar_results = _check_hotelstory(hotel_code, site_name, hotel_display_name, checkin, checkout)
+    if not calendar_results:
+        return []
+
+    driver = make_driver()
+    try:
+        url = (
+            f"https://hub.hotelstory.com/aG90ZWxzdG9yeQ/rooms"
+            f"?v_Use={hotel_code}&v_HotelInfo=Y"
+            f"&v_StartDate={checkin}&v_EndDate={checkout}"
+            "&v_RoomCount=1&v_RoomOnly=Y&v_Package=Y"
+        )
+        driver.get(url)
+        time.sleep(8)
+        text = driver.find_element(By.TAG_NAME, "body").text
+
+        if "판매 완료 되었습니다" in text:
+            print(f"  [{site_name}] 満室（ルームページ確認済み）")
+            return []
+
+        print(f"  [{site_name}] ルームページ空室あり → カレンダー候補を採用")
+        return calendar_results
+
+    except Exception as e:
+        print(f"  [{site_name}] ルームページ確認エラー: {e} → カレンダー結果を使用")
+        return calendar_results
+    finally:
+        driver.quit()
+
+
+def check_alpina(checkin: str, checkout: str) -> list[dict]:
+    return _hotelstory_with_verify("MTAwMTg5MA", "釜山アルピナ", "釜山都市公社アルピナ", checkin, checkout)
+
+
+def check_h_avenue(checkin: str, checkout: str) -> list[dict]:
+    return _hotelstory_with_verify("MTAwMjQ4NQ", "H-Avenue Hotel", "H-Avenue Hotel Busan", checkin, checkout)
+
+
+# ---------------------------------------------------------------------------
 # エントリーポイント
 # ---------------------------------------------------------------------------
 
@@ -707,6 +1030,18 @@ def main() -> None:
 
         print("  【Ramada Encore by Wyndham Busan Station】")
         all_hotels += check_ramada_busan(checkin, checkout)
+
+        print("  【Hotel Foret Premier Nampo】")
+        all_hotels += check_foret_premier(checkin, checkout)
+
+        print("  【Asti Hotel】")
+        all_hotels += check_asti_hotel(checkin, checkout)
+
+        print("  【釜山都市公社アルピナ】")
+        all_hotels += check_alpina(checkin, checkout)
+
+        print("  【H-Avenue Hotel Busan】")
+        all_hotels += check_h_avenue(checkin, checkout)
         print()
 
     print(f"=== 結果サマリー ===")
