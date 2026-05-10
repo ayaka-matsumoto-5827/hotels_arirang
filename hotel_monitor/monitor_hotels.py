@@ -123,7 +123,7 @@ def send_discord_notification(hotels: list[dict]) -> None:
     # 既出ホテル: 2000文字以内に収まるようチャンク分割して送信
     if old_hotels:
         all_lines = [
-            f"・{h['checkin']} [{h['name']}](<{h['url']}>) {h['price']}" if h.get("url")
+            f"・{h['checkin']} [{h['name']}]({h['url']}) {h['price']}" if h.get("url")
             else f"・{h['checkin']} {h['name']} {h['price']}"
             for h in old_hotels
         ]
@@ -132,12 +132,12 @@ def send_discord_notification(hotels: list[dict]) -> None:
         for line in all_lines:
             addition = line + "\n"
             if chunk_len + len(addition) > 1900:
-                _post_discord({"content": "".join(chunk)})
+                _post_discord({"content": "".join(chunk), "flags": 4})
                 chunk, chunk_len = [], 0
             chunk.append(addition)
             chunk_len += len(addition)
         if chunk:
-            _post_discord({"content": "".join(chunk)})
+            _post_discord({"content": "".join(chunk), "flags": 4})
 
     # 既出セットを今回の結果で更新
     save_seen(seen | {_hotel_key(h) for h in hotels})
