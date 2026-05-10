@@ -19,6 +19,7 @@ from selenium_stealth import stealth
 
 # --- 設定 ---
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
+SOURCE = "☁️ GitHub Actions" if os.environ.get("GITHUB_ACTIONS") == "true" else "🖥️ ローカル"
 BUDGET_JPY = 30_000
 DATE_RANGES = [
     ("2026-06-11", "2026-06-12"),
@@ -105,7 +106,7 @@ def send_discord_notification(hotels: list[dict]) -> None:
     # 新規ホテル: 1件ずつ目立つembedで送信
     for h in new_hotels[:10]:
         payload = {
-            "content": "🆕 **新着！予算内の空室が見つかりました**",
+            "content": f"🆕 **新着！予算内の空室が見つかりました**｜ {SOURCE}",
             "embeds": [{
                 "title": f"🏨 {h['name']}",
                 "url": h.get("url") or None,
@@ -127,7 +128,7 @@ def send_discord_notification(hotels: list[dict]) -> None:
             else f"・{h['checkin']} {h['name']} {h['price']}"
             for h in old_hotels
         ]
-        header = f"📋 **継続中の空室**（{len(old_hotels)}件）\n"
+        header = f"📋 **継続中の空室**（{len(old_hotels)}件）｜ {SOURCE}\n"
         chunk, chunk_len = [header], len(header)
         for line in all_lines:
             addition = line + "\n"
