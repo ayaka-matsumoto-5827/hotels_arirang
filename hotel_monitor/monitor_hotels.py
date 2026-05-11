@@ -20,7 +20,7 @@ from selenium_stealth import stealth
 # --- 設定 ---
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 SOURCE = "☁️ GitHub Actions" if os.environ.get("GITHUB_ACTIONS") == "true" else "🖥️ ローカル"
-BUDGET_JPY = 30_000
+BUDGET_JPY = 20_000
 DATE_RANGES = [
     ("2026-06-11", "2026-06-12"),
     ("2026-06-12", "2026-06-13"),
