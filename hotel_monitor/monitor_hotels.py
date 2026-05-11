@@ -273,8 +273,10 @@ def check_trip_com(checkin: str, checkout: str) -> list[dict]:
                 if (seen.has(name)) return;
                 seen.add(name);
                 var priceText = '';
-                for (var i = lines.length - 1; i >= 0; i--) {
-                    if (lines[i].includes('円')) { priceText = lines[i]; break; }
+                for (var i = 0; i < lines.length; i++) {
+                    if (/^[¥￥][\d,]+$/.test(lines[i]) || /^[\d,]+円$/.test(lines[i])) {
+                        priceText = lines[i]; break;
+                    }
                 }
                 var linkEl = card.querySelector('a[href*="hotel"], a[href*="hotels"]');
                 results.push({
