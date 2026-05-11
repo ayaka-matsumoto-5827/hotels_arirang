@@ -103,33 +103,12 @@ def send_discord_notification(hotels: list[dict]) -> None:
     new_hotels = [h for h in hotels if _hotel_key(h) not in seen]
     old_hotels = [h for h in hotels if _hotel_key(h) in seen]
 
-    # 新規ホテル: 1件ずつembedカードで送信（Discordレート制限対策で0.5秒間隔）
-    for h in new_hotels:
-        payload = {
-            "content": f"🆕 **新着！予算内の空室**｜ {SOURCE}",
-            "embeds": [{
-                "title": f"🏨 {h['name']}",
-                "url": h.get("url") or None,
-                "description": (
-                    f"**サイト**: {h['site']}\n"
-                    f"**日程**: {h['checkin']} チェックイン\n"
-                    f"**金額**: {h['price']}"
-                ),
-                "color": 0x00FF88,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }],
-        }
-        _post_discord(payload)
-        time.sleep(0.5)
-
-    # 既出ホテル: リスト形式・埋め込みカード非表示（flags:4）
-    if old_hotels:
+    def _send_list(hotels: list[dict], header: str) -> None:
         lines = [
             f"・{h['checkin']} [{h['name']}]({h['url']}) {h['price']}" if h.get("url")
             else f"・{h['checkin']} {h['name']} {h['price']}"
-            for h in old_hotels
+            for h in hotels
         ]
-        header = f"📋 **継続中の空室**（{len(old_hotels)}件）｜ {SOURCE}\n"
         chunk, chunk_len = [header], len(header)
         for line in lines:
             addition = line + "\n"
@@ -140,6 +119,12 @@ def send_discord_notification(hotels: list[dict]) -> None:
             chunk_len += len(addition)
         if chunk:
             _post_discord({"content": "".join(chunk), "flags": 4})
+
+    if new_hotels:
+        _send_list(new_hotels, f"🆕 **新着の空室**（{len(new_hotels)}件）｜ {SOURCE}\n")
+
+    if old_hotels:
+        _send_list(old_hotels, f"📋 **継続中の空室**（{len(old_hotels)}件）｜ {SOURCE}\n")
 
     # 既出セットを今回の結果で更新
     save_seen(seen | {_hotel_key(h) for h in hotels})
