@@ -103,42 +103,38 @@ def send_discord_notification(hotels: list[dict]) -> None:
     new_hotels = [h for h in hotels if _hotel_key(h) not in seen]
     old_hotels = [h for h in hotels if _hotel_key(h) in seen]
 
-    # 新規ホテル: 1件ずつ目立つembedで送信
-    for h in new_hotels[:10]:
-        payload = {
-            "content": f"🆕 **新着！予算内の空室が見つかりました**｜ {SOURCE}",
-            "embeds": [{
-                "title": f"🏨 {h['name']}",
-                "url": h.get("url") or None,
-                "description": (
-                    f"**サイト**: {h['site']}\n"
-                    f"**日程**: {h['checkin']} チェックイン\n"
-                    f"**金額**: {h['price']}"
-                ),
-                "color": 0x00FF88,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }],
-        }
-        _post_discord(payload)
-
-    # 既出ホテル: 2000文字以内に収まるようチャンク分割して送信
-    if old_hotels:
-        all_lines = [
+    def _send_hotel_list(hotels: list[dict], header: str, suppress_embeds: bool) -> None:
+        lines = [
             f"・{h['checkin']} [{h['name']}]({h['url']}) {h['price']}" if h.get("url")
             else f"・{h['checkin']} {h['name']} {h['price']}"
-            for h in old_hotels
+            for h in hotels
         ]
-        header = f"📋 **継続中の空室**（{len(old_hotels)}件）｜ {SOURCE}\n"
         chunk, chunk_len = [header], len(header)
-        for line in all_lines:
+        for line in lines:
             addition = line + "\n"
             if chunk_len + len(addition) > 1900:
-                _post_discord({"content": "".join(chunk), "flags": 4})
+                payload = {"content": "".join(chunk)}
+                if suppress_embeds:
+                    payload["flags"] = 4
+                _post_discord(payload)
                 chunk, chunk_len = [], 0
             chunk.append(addition)
             chunk_len += len(addition)
         if chunk:
-            _post_discord({"content": "".join(chunk), "flags": 4})
+            payload = {"content": "".join(chunk)}
+            if suppress_embeds:
+                payload["flags"] = 4
+            _post_discord(payload)
+
+    # 新規ホテル: リスト形式でまとめて送信（件数が多くてもすべて通知）
+    if new_hotels:
+        header = f"🆕 **新着！予算内の空室**（{len(new_hotels)}件）｜ {SOURCE}\n"
+        _send_hotel_list(new_hotels, header, suppress_embeds=False)
+
+    # 既出ホテル: リスト形式・埋め込みカード非表示
+    if old_hotels:
+        header = f"📋 **継続中の空室**（{len(old_hotels)}件）｜ {SOURCE}\n"
+        _send_hotel_list(old_hotels, header, suppress_embeds=True)
 
     # 既出セットを今回の結果で更新
     save_seen(seen | {_hotel_key(h) for h in hotels})
