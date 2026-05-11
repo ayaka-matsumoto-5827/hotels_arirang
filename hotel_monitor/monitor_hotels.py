@@ -347,6 +347,8 @@ def _check_toyoko_inn_one(bid: str, hotel_code: str, checkin: str, checkout: str
                 continue
             price_krw = p.get("price", {}).get("generalPrice", 0)
             price_jpy = int(price_krw * KRW_TO_JPY)
+            if price_jpy > BUDGET_JPY:
+                continue
             room_name = rt.get("roomTypeName", "")
             plan_name = p.get("planName", "")
             print(f"    ✓ [{hotel_title}] {room_name}({plan_name}): ₩{price_krw:,} ≈ ¥{price_jpy:,} 空室:{general_vacant}")
