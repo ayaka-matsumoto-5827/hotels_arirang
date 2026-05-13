@@ -27,6 +27,7 @@ BLOCK_KEYWORDS = [
     "ホステル", "ゲストハウス", "モーテル", "民宿", "ペンション",
     "urbanstay", "myeongji ciel", "kenny stay", "louis hamilton",
     "elmomento", "brown-dot", "family hotel bnb", "northharbor",
+    "bridge hotel",
 ]
 
 
