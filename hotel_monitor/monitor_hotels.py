@@ -20,6 +20,7 @@ from selenium_stealth import stealth
 # --- 設定 ---
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 SOURCE = "☁️ GitHub Actions" if os.environ.get("GITHUB_ACTIONS") == "true" else "🖥️ ローカル"
+BUDGET_MIN_JPY = 6_000
 BUDGET_JPY = 20_000
 DATE_RANGES = [
     ("2026-06-11", "2026-06-12"),
@@ -105,11 +106,21 @@ def send_discord_notification(hotels: list[dict]) -> None:
     old_hotels = [h for h in hotels if _hotel_key(h) in seen]
 
     def _send_list(hotels: list[dict], header: str) -> None:
-        lines = [
-            f"・{h['checkin']} [{h['name']}]({h['url']}) {h['price']}" if h.get("url")
-            else f"・{h['checkin']} {h['name']} {h['price']}"
-            for h in hotels
-        ]
+        # 日付ごとにグループ化
+        from collections import defaultdict
+        by_date = defaultdict(list)
+        for h in hotels:
+            by_date[h["checkin"]].append(h)
+
+        lines = []
+        for date in sorted(by_date):
+            lines.append(f"📅 **{date}**")
+            for h in by_date[date]:
+                if h.get("url"):
+                    lines.append(f"・[{h['name']}]({h['url']}) {h['price']}")
+                else:
+                    lines.append(f"・{h['name']} {h['price']}")
+
         chunk, chunk_len = [header], len(header)
         for line in lines:
             addition = line + "\n"
@@ -197,7 +208,7 @@ def check_booking_com(checkin: str, checkout: str) -> list[dict]:
                 except Exception:
                     hotel_url = ""
 
-                if price <= BUDGET_JPY:
+                if BUDGET_MIN_JPY <= price <= BUDGET_JPY:
                     print(f"    ✓ {name}: ¥{price:,}")
                     results.append({
                         "site": "Booking.com",
@@ -295,7 +306,7 @@ def check_trip_com(checkin: str, checkout: str) -> list[dict]:
             name = h.get("name", "").strip()
             if price is None or not name:
                 continue
-            if price <= BUDGET_JPY:
+            if BUDGET_MIN_JPY <= price <= BUDGET_JPY:
                 print(f"    ✓ {name}: ¥{price:,}")
                 results.append({
                     "site": "Trip.com",
@@ -350,7 +361,7 @@ def _check_toyoko_inn_one(bid: str, hotel_code: str, checkin: str, checkout: str
                 continue
             price_krw = p.get("price", {}).get("generalPrice", 0)
             price_jpy = int(price_krw * KRW_TO_JPY)
-            if price_jpy > BUDGET_JPY:
+            if not (BUDGET_MIN_JPY <= price_jpy <= BUDGET_JPY):
                 continue
             room_name = rt.get("roomTypeName", "")
             plan_name = p.get("planName", "")
@@ -451,7 +462,7 @@ def check_solaria_busan(checkin: str, checkout: str) -> list[dict]:
             seen_prices.add(price_krw)
             price_jpy = int(price_krw * KRW_TO_JPY)
             room_name = room_types[i] if i < len(room_types) else "客室"
-            if price_jpy <= BUDGET_JPY:
+            if BUDGET_MIN_JPY <= price_jpy <= BUDGET_JPY:
                 print(f"    ✓ {room_name}: ₩{price_krw:,} ≈ ¥{price_jpy:,}")
                 results.append({
                     "site": "Solaria Busan",
@@ -587,7 +598,7 @@ def check_hound_hotel(checkin: str, checkout: str) -> list[dict]:
                 continue
             seen.add(price_krw)
             price_jpy = int(price_krw * KRW_TO_JPY)
-            if price_jpy <= BUDGET_JPY:
+            if BUDGET_MIN_JPY <= price_jpy <= BUDGET_JPY:
                 print(f"    ✓ {room_name}: ₩{price_krw:,} ≈ ¥{price_jpy:,}")
                 results.append({
                     "site": "Hound Hotel Signature",
@@ -653,7 +664,7 @@ def check_ramada_busan(checkin: str, checkout: str) -> list[dict]:
             name = room.get("shortName", "客室")
             price_krw = room.get("lowRate", 0)
             price_jpy = int(price_krw * KRW_TO_JPY)
-            if price_jpy <= BUDGET_JPY:
+            if BUDGET_MIN_JPY <= price_jpy <= BUDGET_JPY:
                 print(f"    ✓ {name}: ₩{price_krw:,} ≈ ¥{price_jpy:,}")
                 results.append({
                     "site": "Ramada Busan (Wyndham公式)",
@@ -782,7 +793,7 @@ def check_foret_premier(checkin: str, checkout: str) -> list[dict]:
                 continue
             seen.add(price_krw)
             price_jpy = int(price_krw * KRW_TO_JPY)
-            if price_jpy <= BUDGET_JPY:
+            if BUDGET_MIN_JPY <= price_jpy <= BUDGET_JPY:
                 print(f"    ✓ {room_name}: ₩{price_krw:,} ≈ ¥{price_jpy:,}")
                 results.append({
                     "site": "Hotel Foret Premier",
@@ -850,7 +861,7 @@ def check_asti_hotel(checkin: str, checkout: str) -> list[dict]:
                     continue
                 price_krw = int(detail.get("day_rate", 0))
                 price_jpy = int(price_krw * KRW_TO_JPY)
-                if price_jpy > BUDGET_JPY:
+                if not (BUDGET_MIN_JPY <= price_jpy <= BUDGET_JPY):
                     continue
                 plan_name = detail.get("rate_package_name_tx", "")
                 display_name = f"{room_name}（{plan_name}）" if plan_name else room_name
@@ -926,7 +937,7 @@ def _check_hotelstory(hotel_code: str, site_name: str, hotel_display_name: str,
             price_jpy = int(price_krw * KRW_TO_JPY)
             parts = avail.strip().split("/")
             available = int(parts[1]) if len(parts) >= 2 else 0
-            if available == 0 or price_jpy > BUDGET_JPY:
+            if available == 0 or not (BUDGET_MIN_JPY <= price_jpy <= BUDGET_JPY):
                 continue
             name = name.strip()
             print(f"    ✓ {name}: ₩{price_krw:,} ≈ ¥{price_jpy:,} 空室:{available}")
