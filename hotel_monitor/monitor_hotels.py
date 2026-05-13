@@ -25,6 +25,8 @@ BUDGET_JPY = 20_000
 BLOCK_KEYWORDS = [
     "hostel", "guesthouse", "guest house", "motel",
     "ホステル", "ゲストハウス", "モーテル", "民宿", "ペンション",
+    "urbanstay", "myeongji ciel", "kenny stay", "louis hamilton",
+    "elmomento", "brown-dot", "family hotel bnb", "northharbor",
 ]
 
 
