@@ -137,17 +137,17 @@ def send_discord_notification(hotels: list[dict]) -> None:
                     lines.append(f"🏙 **{area}**")
                     for h in area_hotels:
                         if h.get("url"):
-                            lines.append(f"　・[{h['name']}]({h['url']}) {h['price']}")
+                            lines.append(f"・[{h['name']}]({h['url']}) {h['price']}")
                         else:
-                            lines.append(f"　・{h['name']} {h['price']}")
+                            lines.append(f"・{h['name']} {h['price']}")
             ota_hotels = ota_by_date.get(date, [])
             if ota_hotels:
                 lines.append("🔍 **Booking.com / Trip.com**")
                 for h in ota_hotels:
                     if h.get("url"):
-                        lines.append(f"　・[{h['name']}]({h['url']}) {h['price']}")
+                        lines.append(f"・[{h['name']}]({h['url']}) {h['price']}")
                     else:
-                        lines.append(f"　・{h['name']} {h['price']}")
+                        lines.append(f"・{h['name']} {h['price']}")
 
         chunk, chunk_len = [header], len(header)
         for line in lines:
