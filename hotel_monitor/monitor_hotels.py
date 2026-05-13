@@ -115,20 +115,39 @@ def send_discord_notification(hotels: list[dict]) -> None:
     old_hotels = [h for h in hotels if _hotel_key(h) in seen]
 
     def _send_list(hotels: list[dict], header: str) -> None:
-        # 日付ごとにグループ化
         from collections import defaultdict
-        by_date = defaultdict(list)
+        AREA_ORDER = ["釜山駅", "西面", "海雲台", "その他"]
+
+        by_date_area = defaultdict(lambda: defaultdict(list))
+        ota_by_date = defaultdict(list)
         for h in hotels:
-            by_date[h["checkin"]].append(h)
+            area = h.get("area")
+            if area:
+                by_date_area[h["checkin"]][area].append(h)
+            else:
+                ota_by_date[h["checkin"]].append(h)
 
         lines = []
-        for date in sorted(by_date):
+        all_dates = sorted(set(list(by_date_area.keys()) + list(ota_by_date.keys())))
+        for date in all_dates:
             lines.append(f"📅 **{date}**")
-            for h in by_date[date]:
-                if h.get("url"):
-                    lines.append(f"・[{h['name']}]({h['url']}) {h['price']}")
-                else:
-                    lines.append(f"・{h['name']} {h['price']}")
+            for area in AREA_ORDER:
+                area_hotels = by_date_area[date].get(area, [])
+                if area_hotels:
+                    lines.append(f"🏙 **{area}**")
+                    for h in area_hotels:
+                        if h.get("url"):
+                            lines.append(f"　・[{h['name']}]({h['url']}) {h['price']}")
+                        else:
+                            lines.append(f"　・{h['name']} {h['price']}")
+            ota_hotels = ota_by_date.get(date, [])
+            if ota_hotels:
+                lines.append("🔍 **Booking.com / Trip.com**")
+                for h in ota_hotels:
+                    if h.get("url"):
+                        lines.append(f"　・[{h['name']}]({h['url']}) {h['price']}")
+                    else:
+                        lines.append(f"　・{h['name']} {h['price']}")
 
         chunk, chunk_len = [header], len(header)
         for line in lines:
@@ -354,6 +373,12 @@ TOYOKO_INN_HOTELS = [
     "00178",
     "00256",
 ]
+TOYOKO_INN_AREA = {
+    "00194": "釜山駅",
+    "00178": "釜山駅",
+    "00221": "西面",
+    "00256": "海雲台",
+}
 
 def _check_toyoko_inn_one(bid: str, hotel_code: str, checkin: str, checkout: str) -> list[dict]:
     results = []
@@ -389,6 +414,7 @@ def _check_toyoko_inn_one(bid: str, hotel_code: str, checkin: str, checkout: str
                 "checkin": checkin,
                 "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
                 "price_num": price_jpy,
+                "area": TOYOKO_INN_AREA.get(hotel_code, "その他"),
                 "url": (
                     "https://www.toyoko-inn.com/search/result/room_plan/"
                     f"?hotel={hotel_code}&people=1&room=1&smoking=noSmoking&start={checkin}&end={checkout}"
@@ -466,6 +492,7 @@ def check_solaria_busan(checkin: str, checkout: str) -> list[dict]:
                 "checkin": checkin,
                 "price": "要確認",
                 "price_num": 0,
+                "area": "西面",
                 "url": url.replace("%2F", "/"),
             })
             return results
@@ -487,6 +514,7 @@ def check_solaria_busan(checkin: str, checkout: str) -> list[dict]:
                     "checkin": checkin,
                     "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
                     "price_num": price_jpy,
+                    "area": "西面",
                     "url": booking_url,
                 })
 
@@ -623,6 +651,7 @@ def check_hound_hotel(checkin: str, checkout: str) -> list[dict]:
                     "checkin": checkin,
                     "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
                     "price_num": price_jpy,
+                    "area": "釜山駅",
                     "url": booking_url,
                 })
 
@@ -689,6 +718,7 @@ def check_ramada_busan(checkin: str, checkout: str) -> list[dict]:
                     "checkin": checkin,
                     "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
                     "price_num": price_jpy,
+                    "area": "釜山駅",
                     "url": booking_url,
                 })
 
@@ -818,6 +848,7 @@ def check_foret_premier(checkin: str, checkout: str) -> list[dict]:
                     "checkin": checkin,
                     "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
                     "price_num": price_jpy,
+                    "area": "その他",
                     "url": booking_url,
                 })
 
@@ -889,6 +920,7 @@ def check_asti_hotel(checkin: str, checkout: str) -> list[dict]:
                     "checkin": checkin,
                     "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
                     "price_num": price_jpy,
+                    "area": "釜山駅",
                     "url": booking_url,
                 })
 
@@ -917,7 +949,7 @@ def check_asti_hotel(checkin: str, checkout: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _check_hotelstory(hotel_code: str, site_name: str, hotel_display_name: str,
-                      checkin: str, checkout: str) -> list[dict]:
+                      checkin: str, checkout: str, area: str = "その他") -> list[dict]:
     results = []
     try:
         year_month = checkin[:7]
@@ -964,6 +996,7 @@ def _check_hotelstory(hotel_code: str, site_name: str, hotel_display_name: str,
                 "checkin": checkin,
                 "price": f"₩{price_krw:,}（≈¥{price_jpy:,}）",
                 "price_num": price_jpy,
+                "area": area,
                 "url": booking_url,
             })
 
@@ -979,9 +1012,9 @@ def _check_hotelstory(hotel_code: str, site_name: str, hotel_display_name: str,
 
 
 def _hotelstory_with_verify(hotel_code: str, site_name: str, hotel_display_name: str,
-                            checkin: str, checkout: str) -> list[dict]:
+                            checkin: str, checkout: str, area: str = "その他") -> list[dict]:
     """カレンダーで候補が見つかった場合、ルームページ（SPA）で実在庫を確認してから返す"""
-    calendar_results = _check_hotelstory(hotel_code, site_name, hotel_display_name, checkin, checkout)
+    calendar_results = _check_hotelstory(hotel_code, site_name, hotel_display_name, checkin, checkout, area=area)
     if not calendar_results:
         return []
 
@@ -1012,11 +1045,11 @@ def _hotelstory_with_verify(hotel_code: str, site_name: str, hotel_display_name:
 
 
 def check_alpina(checkin: str, checkout: str) -> list[dict]:
-    return _hotelstory_with_verify("MTAwMTg5MA", "釜山アルピナ", "釜山都市公社アルピナ", checkin, checkout)
+    return _hotelstory_with_verify("MTAwMTg5MA", "釜山アルピナ", "釜山都市公社アルピナ", checkin, checkout, area="その他")
 
 
 def check_h_avenue(checkin: str, checkout: str) -> list[dict]:
-    return _hotelstory_with_verify("MTAwMjQ4NQ", "H-Avenue Hotel", "H-Avenue Hotel Busan", checkin, checkout)
+    return _hotelstory_with_verify("MTAwMjQ4NQ", "H-Avenue Hotel", "H-Avenue Hotel Busan", checkin, checkout, area="西面")
 
 
 # ---------------------------------------------------------------------------
