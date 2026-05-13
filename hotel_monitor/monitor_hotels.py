@@ -22,6 +22,15 @@ DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 SOURCE = "☁️ GitHub Actions" if os.environ.get("GITHUB_ACTIONS") == "true" else "🖥️ ローカル"
 BUDGET_MIN_JPY = 6_000
 BUDGET_JPY = 20_000
+BLOCK_KEYWORDS = [
+    "hostel", "guesthouse", "guest house", "motel",
+    "ホステル", "ゲストハウス", "モーテル", "民宿", "ペンション",
+]
+
+
+def _is_blocked(name: str) -> bool:
+    lower = name.lower()
+    return any(kw in lower for kw in BLOCK_KEYWORDS)
 DATE_RANGES = [
     ("2026-06-11", "2026-06-12"),
     ("2026-06-12", "2026-06-13"),
@@ -166,6 +175,7 @@ def check_booking_com(checkin: str, checkout: str) -> list[dict]:
             "&group_adults=1&no_rooms=1"
             "&order=price"
             "&selected_currency=JPY"
+            "&nflt=ht_id%3D204"
         )
         print(f"  [Booking.com] アクセス中...")
         driver.get(url)
@@ -200,6 +210,9 @@ def check_booking_com(checkin: str, checkout: str) -> list[dict]:
                 name = name_el.text.strip()
                 price = parse_price_jpy(price_el.text)
                 if price is None:
+                    continue
+                if _is_blocked(name):
+                    print(f"    スキップ（ブロックワード）: {name}")
                     continue
 
                 try:
@@ -244,6 +257,7 @@ def check_trip_com(checkin: str, checkout: str) -> list[dict]:
             f"&checkin={checkin}&checkout={checkout}"
             "&adult=1&children=0&rooms=1"
             "&curr=JPY&locale=ja-JP&sortorder=1"
+            "&star=3,4,5"
         )
         print(f"  [Trip.com] アクセス中...")
         driver.get(url)
@@ -305,6 +319,9 @@ def check_trip_com(checkin: str, checkout: str) -> list[dict]:
             price = parse_price_jpy(h.get("price", ""))
             name = h.get("name", "").strip()
             if price is None or not name:
+                continue
+            if _is_blocked(name):
+                print(f"    スキップ（ブロックワード）: {name}")
                 continue
             if BUDGET_MIN_JPY <= price <= BUDGET_JPY:
                 print(f"    ✓ {name}: ¥{price:,}")
